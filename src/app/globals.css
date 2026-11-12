@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0c0e12;
+  --foreground: #f3f4f6;
+  --lounge-bg: #0c0e12;
+  --lounge-surface: #15171e;
+  --lounge-card: #1b1e26;
+  --lounge-card-hover: #222530;
+  --lounge-border: #282c37;
+  --lounge-border-subtle: rgba(255, 255, 255, 0.07);
+  --lounge-text-muted: #949aa5;
+  --lounge-text-secondary: #b8bec8;
+  --lounge-text-primary: #f3f4f6;
+}
+
+body {
+  color: var(--lounge-text-primary);
+  background: var(--lounge-bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* ==========================================================================
+   CLERK USER BUTTON POPOVER & DIALOGS - SIGNATURE DARK LOUNGE
+   ========================================================================== */
+.cl-rootBox,
+.cl-userButtonPopoverRootBox,
+.cl-userButtonPopoverCard,
+div[class*="cl-userButtonPopover"],
+div[class*="userButtonPopover"] {
+  --cl-color-background: #15171e !important;
+  --cl-color-foreground: #f3f4f6 !important;
+  --cl-color-neutral: #f3f4f6 !important;
+  --cl-color-text: #f3f4f6 !important;
+  --cl-color-text-secondary: #949aa5 !important;
+  --cl-color-primary: #d97706 !important;
+}
+
+.cl-userButtonPopoverCard,
+.cl-userButtonPopoverRootBox,
+div[class*="userButtonPopoverCard"],
+div[class*="userButtonPopoverRootBox"] {
+  background-color: #15171e !important;
+  background-image: none !important;
+  border: 1px solid #282c37 !important;
+  border-radius: 1.25rem !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 8px 10px -6px rgba(0, 0, 0, 0.8) !important;
+  color: #f3f4f6 !important;
+  overflow: hidden !important;
+}
+
+/* User identity header */
+.cl-userButtonPopoverCard .cl-userPreviewMainIdentifier,
+div[class*="userButtonPopover"] [class*="userPreviewMainIdentifier"],
+div[class*="userButtonPopover"] h1,
+div[class*="userButtonPopover"] h2 {
+  color: #ffffff !important;
+  font-size: 0.875rem !important;
+  font-weight: 700 !important;
+}
+
+.cl-userButtonPopoverCard .cl-userPreviewSecondaryIdentifier,
+div[class*="userButtonPopover"] [class*="userPreviewSecondaryIdentifier"] {
+  color: #949aa5 !important;
+  font-size: 0.75rem !important;
+}
+
+/* All action buttons and links ("Manage account", "My Profile & Rooms", "Sign out") */
+.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton,
+.cl-userButtonPopoverCard .cl-userButtonPopoverCustomItemButton,
+div[class*="userButtonPopoverCard"] button,
+div[class*="userButtonPopoverCard"] a,
+div[class*="userButtonPopoverActions"] button,
+div[class*="userButtonPopoverActions"] a,
+.cl-userButtonPopoverCard [role="menuitem"],
+div[class*="userButtonPopoverActionButton"],
+div[class*="userButtonPopoverCustomItemButton"] {
+  color: #f3f4f6 !important;
+  background-color: transparent !important;
+  border-radius: 0.75rem !important;
+  padding: 0.625rem 0.875rem !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+/* Hover state on menu items */
+.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover,
+.cl-userButtonPopoverCard .cl-userButtonPopoverCustomItemButton:hover,
+div[class*="userButtonPopoverCard"] button:hover,
+div[class*="userButtonPopoverCard"] a:hover,
+div[class*="userButtonPopoverActions"] button:hover,
+div[class*="userButtonPopoverActions"] a:hover,
+.cl-userButtonPopoverCard [role="menuitem"]:hover,
+div[class*="userButtonPopoverActionButton"]:hover,
+div[class*="userButtonPopoverCustomItemButton"]:hover {
+  background-color: #222530 !important;
+  color: #ffffff !important;
+}
+
+/* Every text child and span inside action buttons */
+.cl-userButtonPopoverCard button *,
+.cl-userButtonPopoverCard a *,
+div[class*="userButtonPopover"] button *,
+div[class*="userButtonPopover"] a *,
+.cl-userButtonPopoverCard [role="menuitem"] * {
+  color: #f3f4f6 !important;
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+}
+
+.cl-userButtonPopoverCard button:hover *,
+.cl-userButtonPopoverCard a:hover *,
+div[class*="userButtonPopover"] button:hover *,
+div[class*="userButtonPopover"] a:hover * {
+  color: #ffffff !important;
+}
+
+/* Icons in buttons */
+.cl-userButtonPopoverCard svg,
+div[class*="userButtonPopover"] svg {
+  color: #d97706 !important; /* Warm Amber */
+  stroke: #d97706 !important;
+  opacity: 1 !important;
+  width: 1rem !important;
+  height: 1rem !important;
+}
+
+/* Popover footer ("Secured by Clerk / Development mode") */
+.cl-userButtonPopoverCard .cl-userButtonPopoverFooter,
+div[class*="userButtonPopoverCard"] [class*="userButtonPopoverFooter"],
+div[class*="userButtonPopover"] [class*="footer"] {
+  background-color: #1b1e26 !important;
+  border-top: 1px solid #282c37 !important;
+}
+
+.cl-userButtonPopoverCard .cl-userButtonPopoverFooter *,
+div[class*="userButtonPopoverCard"] [class*="userButtonPopoverFooter"] *,
+div[class*="userButtonPopover"] [class*="footer"] * {
+  color: #949aa5 !important;
+}
+
+.cl-userButtonPopoverCard [data-localization-key*="developmentMode"],
+div[class*="userButtonPopover"] [data-localization-key*="developmentMode"] {
+  color: #d97706 !important;
+  font-weight: 600 !important;
+}
+
+/* ==========================================================================
+   CLERK MANAGE ACCOUNT MODAL - DARK LOUNGE
+   ========================================================================== */
+.cl-modalContent,
+.cl-modalBackdrop {
+  background-color: rgba(12, 14, 18, 0.8) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+.cl-modalContent {
+  background-color: #15171e !important;
+  border: 1px solid #282c37 !important;
+  border-radius: 1.25rem !important;
+  color: #f3f4f6 !important;
+}
+
+.cl-navbar {
+  background-color: #101217 !important;
+  border-right: 1px solid #282c37 !important;
+}
+
+.cl-scrollBox {
+  background-color: #15171e !important;
+  color: #f3f4f6 !important;
+}
+
+/* Minimal subtle scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: var(--lounge-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--lounge-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Slider custom accent */
+input[type="range"] {
+  accent-color: #d97706;
+}
