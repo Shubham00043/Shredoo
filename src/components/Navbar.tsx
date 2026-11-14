@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useUser, UserButton } from '@clerk/nextjs';
-import { dark } from '@clerk/themes';
+import { loungeClerkTheme } from '@/lib/clerk-theme';
 import {
   Radio,
   Plus,
@@ -79,48 +79,18 @@ export function Navbar() {
               <UserButton
                 showName
                 appearance={{
-                  baseTheme: dark,
-                  variables: {
-                    colorPrimary: '#d97706',
-                    colorBackground: '#15171e',
-                    colorNeutral: '#f3f4f6',
-                    colorForeground: '#f3f4f6',
-                    colorText: '#f3f4f6',
-                    colorTextSecondary: '#949aa5',
-                    colorInputBackground: '#0c0e12',
-                    colorInputText: '#f3f4f6',
-                  },
-                  elements: {
-                    userButtonAvatarBox: 'w-8 h-8 rounded-xl border border-lounge-border',
-                    userButtonOuterIdentifier:
-                      'text-xs font-semibold pl-1 text-lounge-textPrimary',
-                    userButtonBox:
-                      'flex-row-reverse gap-2 p-1 pl-3 rounded-xl bg-lounge-card hover:bg-lounge-cardHover border border-lounge-border transition',
-                    userButtonPopoverCard:
-                      '!bg-[#15171e] !border !border-[#282c37] !shadow-2xl !rounded-2xl overflow-hidden !text-[#f3f4f6]',
-                    userPreviewMainIdentifier: '!text-white !font-bold',
-                    userPreviewSecondaryIdentifier: '!text-[#949aa5]',
-                    userButtonPopoverMain: '!bg-[#15171e]',
-                    userButtonPopoverActions: '!bg-[#15171e]',
-                    userButtonPopoverActionButton:
-                      '!text-[#f3f4f6] hover:!text-white hover:!bg-[#222530] !rounded-xl transition flex items-center',
-                    userButtonPopoverActionButtonIcon: '!text-amber-500 !opacity-100',
-                    userButtonPopoverCustomItemButton:
-                      '!text-[#f3f4f6] hover:!text-white hover:!bg-[#222530] !rounded-xl transition flex items-center',
-                    userButtonPopoverCustomItemButtonIcon: '!text-amber-500 !opacity-100',
-                    userButtonPopoverFooter: '!bg-[#1b1e26] !border-t !border-[#282c37]',
-                  },
+                  baseTheme: loungeClerkTheme as any,
                 }}
               >
                 <UserButton.MenuItems>
                   <UserButton.Link
                     label="My Profile & Rooms"
-                    labelIcon={<User size={14} className="text-amber-500" />}
+                    labelIcon={<User size={14} className="text-amber-500" stroke="#d97706" />}
                     href="/profile"
                   />
                   <UserButton.Link
                     label="Admin Lounge"
-                    labelIcon={<ShieldAlert size={14} className="text-amber-500" />}
+                    labelIcon={<ShieldAlert size={14} className="text-amber-500" stroke="#d97706" />}
                     href="/admin"
                   />
                 </UserButton.MenuItems>

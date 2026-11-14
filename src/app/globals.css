@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  color-scheme: dark;
+}
+
 :root {
   --background: #0c0e12;
   --foreground: #f3f4f6;
@@ -29,8 +33,10 @@ body {
 .cl-rootBox,
 .cl-userButtonPopoverRootBox,
 .cl-userButtonPopoverCard,
+.cl-card,
 div[class*="cl-userButtonPopover"],
-div[class*="userButtonPopover"] {
+div[class*="userButtonPopover"],
+div[class*="cl-card"] {
   --cl-color-background: #15171e !important;
   --cl-color-foreground: #f3f4f6 !important;
   --cl-color-neutral: #f3f4f6 !important;
@@ -39,38 +45,64 @@ div[class*="userButtonPopover"] {
   --cl-color-primary: #d97706 !important;
 }
 
+/* The Popover Card & Container */
 .cl-userButtonPopoverCard,
 .cl-userButtonPopoverRootBox,
 div[class*="userButtonPopoverCard"],
-div[class*="userButtonPopoverRootBox"] {
+div[class*="userButtonPopoverRootBox"],
+div[class*="cl-userButtonPopoverCard"],
+div[class*="cl-userButtonPopoverRootBox"] {
+  background: #15171e !important;
   background-color: #15171e !important;
   background-image: none !important;
   border: 1px solid #282c37 !important;
   border-radius: 1.25rem !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 8px 10px -6px rgba(0, 0, 0, 0.8) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.85), 0 8px 10px -6px rgba(0, 0, 0, 0.85) !important;
   color: #f3f4f6 !important;
   overflow: hidden !important;
 }
 
-/* User identity header */
-.cl-userButtonPopoverCard .cl-userPreviewMainIdentifier,
-div[class*="userButtonPopover"] [class*="userPreviewMainIdentifier"],
+/* All Inner Sections */
+.cl-userButtonPopoverMain,
+.cl-userButtonPopoverActions,
+.cl-userPreview,
+div[class*="userButtonPopoverMain"],
+div[class*="userButtonPopoverActions"],
+div[class*="userPreview"],
+div[class*="userPreviewAvatarContainer"],
+div[class*="userPreviewTextContainer"] {
+  background: #15171e !important;
+  background-color: #15171e !important;
+  background-image: none !important;
+  color: #f3f4f6 !important;
+}
+
+/* User Identity Header */
+.cl-userPreview {
+  border-bottom: 1px solid #282c37 !important;
+  padding: 0.875rem 1rem !important;
+}
+
+.cl-userPreviewMainIdentifier,
+div[class*="userPreviewMainIdentifier"],
 div[class*="userButtonPopover"] h1,
-div[class*="userButtonPopover"] h2 {
+div[class*="userButtonPopover"] h2,
+div[class*="userButtonPopover"] [class*="mainIdentifier"] {
   color: #ffffff !important;
   font-size: 0.875rem !important;
   font-weight: 700 !important;
 }
 
-.cl-userButtonPopoverCard .cl-userPreviewSecondaryIdentifier,
-div[class*="userButtonPopover"] [class*="userPreviewSecondaryIdentifier"] {
+.cl-userPreviewSecondaryIdentifier,
+div[class*="userPreviewSecondaryIdentifier"],
+div[class*="userButtonPopover"] [class*="secondaryIdentifier"] {
   color: #949aa5 !important;
   font-size: 0.75rem !important;
 }
 
-/* All action buttons and links ("Manage account", "My Profile & Rooms", "Sign out") */
-.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton,
-.cl-userButtonPopoverCard .cl-userButtonPopoverCustomItemButton,
+/* Action Buttons & Menu Items */
+.cl-userButtonPopoverActionButton,
+.cl-userButtonPopoverCustomItemButton,
 div[class*="userButtonPopoverCard"] button,
 div[class*="userButtonPopoverCard"] a,
 div[class*="userButtonPopoverActions"] button,
@@ -79,15 +111,20 @@ div[class*="userButtonPopoverActions"] a,
 div[class*="userButtonPopoverActionButton"],
 div[class*="userButtonPopoverCustomItemButton"] {
   color: #f3f4f6 !important;
+  background: transparent !important;
   background-color: transparent !important;
   border-radius: 0.75rem !important;
   padding: 0.625rem 0.875rem !important;
+  margin: 0.125rem 0.25rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
   transition: background-color 0.15s ease, color 0.15s ease !important;
 }
 
 /* Hover state on menu items */
-.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover,
-.cl-userButtonPopoverCard .cl-userButtonPopoverCustomItemButton:hover,
+.cl-userButtonPopoverActionButton:hover,
+.cl-userButtonPopoverCustomItemButton:hover,
 div[class*="userButtonPopoverCard"] button:hover,
 div[class*="userButtonPopoverCard"] a:hover,
 div[class*="userButtonPopoverActions"] button:hover,
@@ -95,11 +132,14 @@ div[class*="userButtonPopoverActions"] a:hover,
 .cl-userButtonPopoverCard [role="menuitem"]:hover,
 div[class*="userButtonPopoverActionButton"]:hover,
 div[class*="userButtonPopoverCustomItemButton"]:hover {
+  background: #222530 !important;
   background-color: #222530 !important;
   color: #ffffff !important;
 }
 
-/* Every text child and span inside action buttons */
+/* Labels and text spans inside action buttons */
+.cl-userButtonPopoverActionButtonText,
+.cl-userButtonPopoverCustomItemButtonText,
 .cl-userButtonPopoverCard button *,
 .cl-userButtonPopoverCard a *,
 div[class*="userButtonPopover"] button *,
@@ -118,6 +158,10 @@ div[class*="userButtonPopover"] a:hover * {
 }
 
 /* Icons in buttons */
+.cl-userButtonPopoverActionButtonIcon,
+.cl-userButtonPopoverCustomItemButtonIcon,
+.cl-userButtonPopoverActionButtonIconBox svg,
+.cl-userButtonPopoverCustomItemButtonIconBox svg,
 .cl-userButtonPopoverCard svg,
 div[class*="userButtonPopover"] svg {
   color: #d97706 !important; /* Warm Amber */
@@ -127,22 +171,28 @@ div[class*="userButtonPopover"] svg {
   height: 1rem !important;
 }
 
-/* Popover footer ("Secured by Clerk / Development mode") */
-.cl-userButtonPopoverCard .cl-userButtonPopoverFooter,
+/* Popover Footer ("Secured by Clerk / Development mode") */
+.cl-userButtonPopoverFooter,
 div[class*="userButtonPopoverCard"] [class*="userButtonPopoverFooter"],
-div[class*="userButtonPopover"] [class*="footer"] {
+div[class*="userButtonPopover"] [class*="footer"],
+div[class*="userButtonPopoverFooter"] {
+  background: #1b1e26 !important;
   background-color: #1b1e26 !important;
+  background-image: none !important;
   border-top: 1px solid #282c37 !important;
+  padding: 0.5rem 1rem !important;
 }
 
-.cl-userButtonPopoverCard .cl-userButtonPopoverFooter *,
+.cl-userButtonPopoverFooter *,
 div[class*="userButtonPopoverCard"] [class*="userButtonPopoverFooter"] *,
-div[class*="userButtonPopover"] [class*="footer"] * {
+div[class*="userButtonPopover"] [class*="footer"] *,
+div[class*="userButtonPopoverFooter"] * {
   color: #949aa5 !important;
 }
 
 .cl-userButtonPopoverCard [data-localization-key*="developmentMode"],
-div[class*="userButtonPopover"] [data-localization-key*="developmentMode"] {
+div[class*="userButtonPopover"] [data-localization-key*="developmentMode"],
+div[class*="userButtonPopoverFooter"] [data-localization-key*="developmentMode"] {
   color: #d97706 !important;
   font-weight: 600 !important;
 }

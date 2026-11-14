@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, UserButton } from '@clerk/nextjs';
-import { dark } from '@clerk/themes';
+import { loungeClerkTheme } from '@/lib/clerk-theme';
 import {
   ShieldAlert,
   Users,
@@ -437,25 +437,7 @@ export default function AdminPage() {
             </div>
             <UserButton
               appearance={{
-                baseTheme: dark,
-                variables: {
-                  colorPrimary: '#d97706',
-                  colorBackground: '#15171e',
-                  colorNeutral: '#f3f4f6',
-                  colorForeground: '#f3f4f6',
-                },
-                elements: {
-                  userButtonAvatarBox: 'w-8 h-8 rounded-xl border border-[#282c37]',
-                  userButtonPopoverCard:
-                    '!bg-[#15171e] !border !border-[#282c37] !shadow-2xl !rounded-2xl !text-[#f3f4f6]',
-                  userButtonPopoverActionButton:
-                    '!text-[#f3f4f6] hover:!text-white hover:!bg-[#222530] !rounded-xl transition',
-                  userButtonPopoverActionButtonIcon: '!text-amber-500 !opacity-100',
-                  userButtonPopoverCustomItemButton:
-                    '!text-[#f3f4f6] hover:!text-white hover:!bg-[#222530] !rounded-xl transition',
-                  userButtonPopoverCustomItemButtonIcon: '!text-amber-500 !opacity-100',
-                  userButtonPopoverFooter: '!bg-[#1b1e26] !border-t !border-[#282c37]',
-                },
+                baseTheme: loungeClerkTheme as any,
               }}
             />
           </div>
