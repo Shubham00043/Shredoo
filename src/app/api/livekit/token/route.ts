@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       token,
-      url: process.env.NEXT_PUBLIC_LIVEKIT_URL || 'wss://shredoo-demo.livekit.cloud',
+      url: process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || 'wss://shredoo-demo.livekit.cloud',
     });
   } catch (err: any) {
     console.error('Error in /api/livekit/token:', err);

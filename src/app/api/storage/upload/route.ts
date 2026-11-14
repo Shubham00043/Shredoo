@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+function getUploadDirectory() {
+  const isVercel = Boolean(process.env.VERCEL);
+  if (isVercel) {
+    const tmpUploadDir = path.join(os.tmpdir(), 'shredoo_uploads');
+    if (!fs.existsSync(tmpUploadDir)) {
+      fs.mkdirSync(tmpUploadDir, { recursive: true });
+    }
+    return { dir: tmpUploadDir, isTemp: true };
+  }
+
+  const localUploadDir = path.join(process.cwd(), 'public', 'uploads');
+  try {
+    if (!fs.existsSync(localUploadDir)) {
+      fs.mkdirSync(localUploadDir, { recursive: true });
+    }
+    return { dir: localUploadDir, isTemp: false };
+  } catch (err) {
+    const tmpUploadDir = path.join(os.tmpdir(), 'shredoo_uploads');
+    if (!fs.existsSync(tmpUploadDir)) {
+      fs.mkdirSync(tmpUploadDir, { recursive: true });
+    }
+    return { dir: tmpUploadDir, isTemp: true };
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,19 +39,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
+    const { dir, isTemp } = getUploadDirectory();
     const ext = path.extname(file.name) || '.mp3';
     const safeName = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 7)}${ext}`;
-    const filePath = path.join(UPLOAD_DIR, safeName);
+    const filePath = path.join(dir, safeName);
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     fs.writeFileSync(filePath, buffer);
 
-    const publicUrl = `/uploads/${safeName}`;
+    const publicUrl = isTemp ? `/api/storage/file/${safeName}` : `/uploads/${safeName}`;
 
     return NextResponse.json({
       success: true,

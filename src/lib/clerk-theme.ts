@@ -1,15 +1,16 @@
-import { dark } from '@clerk/themes';
-
 /**
  * SHREDoo Signature Dark Lounge Clerk Theme
  * Enforces pure charcoal (#15171e), warm amber (#d97706), and crisp white (#f3f4f6)
  * across all Clerk components, popovers, modals, and buttons.
+ *
+ * Self-contained prebuilt appearance to guarantee 100% reliability on Vercel
+ * serverless environments with zero external theme package dependency risks.
  */
 export const loungeClerkTheme = {
-  ...dark,
   name: 'lounge-dark',
   variables: {
     colorPrimary: '#d97706',
+    colorPrimaryForeground: '#ffffff',
     colorBackground: '#15171e',
     colorNeutral: '#f3f4f6',
     colorForeground: '#f3f4f6',
@@ -139,3 +140,4 @@ export const loungeClerkTheme = {
   },
   __type: 'prebuilt_appearance',
 };
+

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
 import {
   Room,
   RoomMember,
@@ -21,9 +22,30 @@ import {
   ReportStatus,
 } from '@/types';
 
-// Storage file for persistent local data (fallback when GCP Firestore env is not set)
-const DATA_DIR = path.join(process.cwd(), '.data');
-const DATA_FILE = path.join(DATA_DIR, 'shredoo_store.json');
+// Determine writable data directory (uses /tmp on Vercel or cloud serverless environments)
+function resolveDataPaths() {
+  const isVercel = Boolean(process.env.VERCEL);
+  const localDir = path.join(process.cwd(), '.data');
+  const localFile = path.join(localDir, 'shredoo_store.json');
+  const tmpDir = path.join(os.tmpdir(), 'shredoo_data');
+  const tmpFile = path.join(tmpDir, 'shredoo_store.json');
+
+  if (isVercel) {
+    return {
+      dataDir: tmpDir,
+      dataFile: tmpFile,
+      seedFile: fs.existsSync(localFile) ? localFile : null,
+    };
+  }
+
+  return {
+    dataDir: localDir,
+    dataFile: localFile,
+    seedFile: null,
+  };
+}
+
+const { dataDir: DATA_DIR, dataFile: DATA_FILE, seedFile: SEED_FILE } = resolveDataPaths();
 
 export interface ShredooStore {
   rooms: Record<string, Room>;
@@ -87,10 +109,21 @@ export function generateCryptoRoomCode(): string {
 function initStore(): ShredooStore {
   try {
     if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+      try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      } catch (e) {
+        // Safe to ignore if already created by another thread or read-only
+      }
     }
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf-8');
+
+    const sourceFile = fs.existsSync(DATA_FILE)
+      ? DATA_FILE
+      : SEED_FILE && fs.existsSync(SEED_FILE)
+      ? SEED_FILE
+      : null;
+
+    if (sourceFile) {
+      const data = fs.readFileSync(sourceFile, 'utf-8');
       const parsed = JSON.parse(data);
       if (!parsed.playback) parsed.playback = {};
       if (!parsed.users) parsed.users = {};
@@ -370,11 +403,22 @@ export function saveStore(): void {
   if (!memoryStore) return;
   try {
     if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+      try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      } catch (e) {}
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(memoryStore, null, 2));
   } catch (err) {
-    console.error('Failed to persist store:', err);
+    // If local write fails (e.g. read-only filesystem on Vercel), fallback to OS temp dir
+    try {
+      const fallbackDir = path.join(os.tmpdir(), 'shredoo_data');
+      if (!fs.existsSync(fallbackDir)) {
+        fs.mkdirSync(fallbackDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(fallbackDir, 'shredoo_store.json'), JSON.stringify(memoryStore, null, 2));
+    } catch (fallbackErr) {
+      console.warn('Store update kept in-memory (disk persistence skipped in restricted environment)');
+    }
   }
 }
 

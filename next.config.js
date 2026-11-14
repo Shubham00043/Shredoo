@@ -1,13 +1,18 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
+  outputFileTracingRoot: path.join(__dirname, './'),
   images: {
-    domains: [
-      'images.unsplash.com',
-      'img.clerk.com',
-      'i.ytimg.com',
-      'avatar.vercel.sh',
-      'api.dicebear.com'
+    remotePatterns: [
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'img.clerk.com' },
+      { protocol: 'https', hostname: 'i.ytimg.com' },
+      { protocol: 'https', hostname: 'avatar.vercel.sh' },
+      { protocol: 'https', hostname: 'api.dicebear.com' },
+      { protocol: 'https', hostname: '**.storage.jamendo.com' },
+      { protocol: 'https', hostname: 'usercontent.jamendo.com' },
     ],
   },
 };
