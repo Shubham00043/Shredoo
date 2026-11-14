@@ -402,6 +402,7 @@ export async function adminCloseRoom(
 
   const store = getStore();
   store.rooms[roomId].isClosed = true;
+  (store.rooms[roomId] as any).status = 'closed';
   store.rooms[roomId].updatedAt = new Date().toISOString();
   saveStore();
 
@@ -412,8 +413,8 @@ export async function adminCloseRoom(
     targetId: roomId,
     targetType: 'room',
     reason,
-    previousState: { isClosed: false },
-    newState: { isClosed: true },
+    previousState: { isClosed: false, status: 'active' },
+    newState: { isClosed: true, status: 'closed' },
   });
 
   return { success: true };
@@ -430,6 +431,7 @@ export async function adminReopenRoom(
 
   const store = getStore();
   store.rooms[roomId].isClosed = false;
+  (store.rooms[roomId] as any).status = 'active';
   store.rooms[roomId].updatedAt = new Date().toISOString();
   saveStore();
 
