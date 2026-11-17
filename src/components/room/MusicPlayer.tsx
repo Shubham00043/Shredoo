@@ -94,6 +94,7 @@ export function MusicPlayer({
   const lastSyncedVersionRef = useRef<number>(-1);
   const lastTrackIdRef = useRef<string | null>(null);
   const isLocalActionRef = useRef<boolean>(false);
+  const pendingSeekTimeRef = useRef<number | null>(null);
 
   const canAddSongs = room.musicPermissions.whoCanAdd === 'everyone' || isHostOrMod;
   const canControlPlayback = room.musicPermissions.whoCanControl === 'everyone' || isHostOrMod;
@@ -118,10 +119,17 @@ export function MusicPlayer({
     if (trackChanged) {
       lastTrackIdRef.current = currentTrackId;
       lastSyncedVersionRef.current = playbackVersion;
+      isLocalActionRef.current = false;
       const targetTime = getCalculatedServerTime();
-      if (Math.abs(audio.currentTime - targetTime) > 1.5) {
-        audio.currentTime = targetTime;
+
+      if (audio.readyState >= 1) {
+        if (Math.abs(audio.currentTime - targetTime) > 1.5) {
+          audio.currentTime = targetTime;
+        }
+      } else {
+        pendingSeekTimeRef.current = targetTime > 0 ? targetTime : null;
       }
+
       if (isPlaying) {
         audio.play().catch(() => {});
       } else {
@@ -147,7 +155,7 @@ export function MusicPlayer({
 
       // Action from remote host: sync position smoothly
       const targetTime = getCalculatedServerTime();
-      if (Math.abs(audio.currentTime - targetTime) > 3) {
+      if (audio.readyState >= 1 && Math.abs(audio.currentTime - targetTime) > 3) {
         audio.currentTime = targetTime;
       }
       if (isPlaying && audio.paused) {
@@ -166,7 +174,7 @@ export function MusicPlayer({
       } else {
         // Only adjust if extreme drift occurred (e.g. tab backgrounded for > 10s)
         const targetTime = getCalculatedServerTime();
-        if (Math.abs(audio.currentTime - targetTime) > 10) {
+        if (audio.readyState >= 1 && Math.abs(audio.currentTime - targetTime) > 10) {
           audio.currentTime = targetTime;
         }
       }
@@ -439,7 +447,12 @@ export function MusicPlayer({
       {currentTrack?.sourceUrl && (
         <audio
           ref={audioRef}
-          src={currentTrack.sourceUrl}
+          src={
+            currentTrack.sourceUrl.startsWith('/api/')
+              ? `${currentTrack.sourceUrl}${currentTrack.sourceUrl.includes('?') ? '&' : '?'}userId=${encodeURIComponent(currentUserId)}`
+              : currentTrack.sourceUrl
+          }
+          crossOrigin="anonymous"
           preload="auto"
           onTimeUpdate={(e) => setLocalTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => {
@@ -449,8 +462,19 @@ export function MusicPlayer({
             } else if (currentTrack.duration) {
               setDuration(currentTrack.duration);
             }
+            if (pendingSeekTimeRef.current !== null && audioRef.current) {
+              audioRef.current.currentTime = pendingSeekTimeRef.current;
+              pendingSeekTimeRef.current = null;
+            }
           }}
-          onEnded={handleNextTrack}
+          onEnded={() => {
+            const audio = audioRef.current;
+            if (audio && audio.currentTime < 5 && duration > 20) {
+              console.warn('Playback stopped abnormally early. Skipping repeat loop.');
+              return;
+            }
+            handleNextTrack();
+          }}
         />
       )}
 

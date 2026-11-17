@@ -19,8 +19,10 @@ export async function GET(
   try {
     const { roomId, trackId } = await params;
 
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
+    const queryUserId = req.nextUrl.searchParams.get('userId');
+    const authUser = await getAuthenticatedUser(req);
+    const effectiveUserId = authUser?.userId || queryUserId;
+    if (!effectiveUserId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
@@ -29,13 +31,13 @@ export async function GET(
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    const isBlocked = await isMemberBlocked(roomId, user.userId);
+    const isBlocked = await isMemberBlocked(roomId, effectiveUserId);
     if (isBlocked) {
       return NextResponse.json({ error: 'Access blocked in this room' }, { status: 403 });
     }
 
-    const member = await getMember(roomId, user.userId);
-    const isHost = room.hostId === user.userId;
+    const member = await getMember(roomId, effectiveUserId);
+    const isHost = room.hostId === effectiveUserId;
     if (!member && !isHost) {
       return NextResponse.json(
         { error: 'Private room audio. Must be a member to stream.' },
@@ -82,8 +84,8 @@ export async function GET(
       return NextResponse.json({ error: 'Audio file not found on server' }, { status: 404 });
     }
 
-    const stat = fs.statSync(targetFilePath);
-    const fileSize = stat.size;
+    const fileBuffer = fs.readFileSync(targetFilePath);
+    const fileSize = fileBuffer.length;
     const ext = path.extname(targetFilePath).toLowerCase();
 
     let mimeType = 'audio/mpeg';
@@ -91,40 +93,40 @@ export async function GET(
     else if (ext === '.ogg') mimeType = 'audio/ogg';
     else if (ext === '.m4a') mimeType = 'audio/mp4';
 
-    // Handle HTTP 206 Range requests for smooth streaming and seek bar scrubbing
+    // Handle HTTP 206 Range requests for smooth continuous streaming and scrubbing
     const range = req.headers.get('range');
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
+      const rawEnd = parts[1] ? parseInt(parts[1], 10) : NaN;
+      const end = !isNaN(rawEnd) && rawEnd < fileSize ? rawEnd : fileSize - 1;
 
-      const fd = fs.openSync(targetFilePath, 'r');
-      const buffer = Buffer.alloc(chunkSize);
-      fs.readSync(fd, buffer, 0, chunkSize, start);
-      fs.closeSync(fd);
+      if (!isNaN(start) && start < fileSize && start <= end) {
+        const slice = fileBuffer.subarray(start, end + 1);
 
-      return new NextResponse(buffer, {
-        status: 206,
-        headers: {
-          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunkSize.toString(),
-          'Content-Type': mimeType,
-          'Cache-Control': 'public, max-age=3600',
-        },
-      });
+        return new NextResponse(slice, {
+          status: 206,
+          headers: {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': slice.length.toString(),
+            'Content-Type': mimeType,
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
     }
 
     // Full audio stream
-    const fileBuffer = fs.readFileSync(targetFilePath);
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         'Content-Type': mimeType,
         'Content-Length': fileSize.toString(),
         'Accept-Ranges': 'bytes',
-        'Cache-Control': 'private, max-age=3600',
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
       },
     });
   } catch (err: any) {

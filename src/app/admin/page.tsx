@@ -435,11 +435,7 @@ export default function AdminPage() {
                 {currentAdmin?.isSuperAdmin ? 'SUPER ADMIN' : 'MODERATOR'}
               </p>
             </div>
-            <UserButton
-              appearance={{
-                baseTheme: loungeClerkTheme as any,
-              }}
-            />
+            <UserButton appearance={loungeClerkTheme as any} />
           </div>
         </div>
       </header>

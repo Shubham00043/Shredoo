@@ -78,9 +78,7 @@ export function Navbar() {
             <div className="flex items-center">
               <UserButton
                 showName
-                appearance={{
-                  baseTheme: loungeClerkTheme as any,
-                }}
+                appearance={loungeClerkTheme as any}
               >
                 <UserButton.MenuItems>
                   <UserButton.Link

@@ -20,11 +20,7 @@ export default function RootLayout({
         className="bg-lounge-bg text-lounge-textPrimary min-h-screen antialiased selection:bg-amber-600/30 selection:text-white"
         suppressHydrationWarning
       >
-        <ClerkProvider
-          appearance={{
-            baseTheme: loungeClerkTheme as any,
-          }}
-        >
+        <ClerkProvider appearance={loungeClerkTheme as any}>
           {children}
         </ClerkProvider>
       </body>
