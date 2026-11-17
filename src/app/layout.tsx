@@ -9,6 +9,10 @@ export const metadata: Metadata = {
     'A modern private music-listening lounge with real-time LiveKit voice chat, independent music and voice mixers, and curated catalogues.',
 };
 
+const CLERK_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+  'pk_test_ZW5hYmxlZC10ZXJtaXRlLTEyMjUuY2xlcmsuYWNjb3VudHMuZGV2JA';
+
 export default function RootLayout({
   children,
 }: {
@@ -20,7 +24,10 @@ export default function RootLayout({
         className="bg-lounge-bg text-lounge-textPrimary min-h-screen antialiased selection:bg-amber-600/30 selection:text-white"
         suppressHydrationWarning
       >
-        <ClerkProvider appearance={loungeClerkTheme as any}>
+        <ClerkProvider
+          publishableKey={CLERK_PUBLISHABLE_KEY}
+          appearance={loungeClerkTheme as any}
+        >
           {children}
         </ClerkProvider>
       </body>
