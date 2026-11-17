@@ -105,10 +105,8 @@ export async function DELETE(
       );
     }
 
-    // Remove from datastore & queue
     const { removedTrack } = await removeTrackFromRoomMusic(roomId, trackId);
 
-    // Clean up physical file from storage (Requirement 7)
     if (removedTrack?.storagePath) {
       try {
         const baseStorage = getRoomStorageBaseDir();
@@ -116,7 +114,6 @@ export async function DELETE(
         if (fs.existsSync(fullPath)) {
           fs.unlinkSync(fullPath);
         }
-        // Remove enclosing track directory
         const trackDir = path.dirname(fullPath);
         if (fs.existsSync(trackDir)) {
           fs.rmdirSync(trackDir, { recursive: true });
@@ -138,3 +135,4 @@ export async function DELETE(
     return NextResponse.json({ error: err?.message || 'Internal server error' }, { status: 500 });
   }
 }
+

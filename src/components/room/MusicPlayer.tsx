@@ -357,7 +357,7 @@ export function MusicPlayer({
         />
       )}
 
-      {/* Music Header & Navigation Tabs (Requirement 4) */}
+      {/* Music Header & Navigation Tabs */}
       <div className="p-4 border-b border-lounge-border bg-lounge-card/40 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
@@ -506,7 +506,7 @@ export function MusicPlayer({
               </div>
             </div>
 
-            {/* Host Controls Bar (Requirement 5) */}
+            {/* Host Controls Bar */}
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-2">
                 {canControlPlayback ? (

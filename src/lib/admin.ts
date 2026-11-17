@@ -160,10 +160,7 @@ export async function requireAdminAuth(
   };
 }
 
-// ==========================================
-// IMMUTABLE AUDIT LOGGING
-// ==========================================
-
+// Audit Logging
 export async function logAdminAction(entry: {
   adminId: string;
   adminUsername: string;
@@ -197,10 +194,7 @@ export async function getAuditLogs(limitCount = 100): Promise<AdminAuditLog[]> {
   return [...logs].reverse().slice(0, limitCount);
 }
 
-// ==========================================
-// GLOBAL USER RESTRICTIONS & BANS
-// ==========================================
-
+// User Restrictions & Bans
 export async function getUserRestrictions(userId: string): Promise<UserRestriction[]> {
   const store = getStore();
   return store.user_restrictions?.[userId] || [];
@@ -387,10 +381,7 @@ export async function deleteUserAccount(
   return { success: true };
 }
 
-// ==========================================
-// ADMIN ROOM MANAGEMENT OPERATIONS
-// ==========================================
-
+// Room Management Operations
 export async function adminCloseRoom(
   roomId: string,
   adminId: string,
@@ -524,10 +515,7 @@ export async function adminRevokeRoomCode(
   return { success: true, newCode };
 }
 
-// ==========================================
-// ROLE & PERMISSIONS MANAGEMENT (SUPER ADMIN ONLY)
-// ==========================================
-
+// Roles & Permissions Management
 export async function assignModeratorRole(
   arg1:
     | string
@@ -621,10 +609,7 @@ export async function demoteToNormalUser(
   return { success: true };
 }
 
-// ==========================================
-// USER REPORTING SYSTEM
-// ==========================================
-
+// User Reporting System
 export async function createReport(data: {
   reportedBy: string;
   reportedByName: string;
@@ -683,10 +668,7 @@ export async function updateReportStatus(data: {
   return { success: true, report };
 }
 
-// ==========================================
-// PLATFORM OVERVIEW & ANALYTICS
-// ==========================================
-
+// Platform Overview & Analytics
 export async function getPlatformOverviewStats(): Promise<{
   totalUsers: number;
   activeUsers: number;
@@ -772,10 +754,7 @@ export async function getPlatformOverviewStats(): Promise<{
   };
 }
 
-// ==========================================
-// PLATFORM SETTINGS
-// ==========================================
-
+// Platform Settings
 export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   allowNewRooms: true,
   allowNewRegistrations: true,

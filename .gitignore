@@ -13,7 +13,11 @@ node_modules/
 /out/
 /build/
 /dist/
-clerk-nextjs/
+# runtime uploads and storage
+public/uploads/*
+!public/uploads/.gitkeep
+public/storage/*
+!public/storage/.gitkeep
 
 # local datastore
 .data/

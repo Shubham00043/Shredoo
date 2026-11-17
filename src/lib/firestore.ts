@@ -427,10 +427,7 @@ export function saveStore(): void {
   }
 }
 
-// ==========================================
-// USERNAME OPERATIONS (ATOMIC RESERVATIONS)
-// ==========================================
-
+// Username reservations (atomic with async lock)
 const RESERVED_USERNAMES = [
   'admin',
   'administrator',
@@ -629,10 +626,7 @@ export async function releaseUsername(clerkUserId: string): Promise<boolean> {
   });
 }
 
-// ==========================================
-// USER PROFILE OPERATIONS
-// ==========================================
-
+// User profile operations
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   const store = getStore();
   return store.users[userId] || null;
@@ -679,10 +673,7 @@ export async function syncUserProfile(
   });
 }
 
-// ==========================================
-// ROOM CODE OPERATIONS (ATOMIC & CRYPTOGRAPHIC)
-// ==========================================
-
+// Room code operations (atomic cryptographic generation)
 export async function reserveUniqueRoomCode(
   roomId: string,
   maxAttempts = 15
@@ -815,10 +806,7 @@ export function sanitizeRoomForPublic(room: Room, viewerUserId?: string): Room {
   };
 }
 
-// ==========================================
-// ROOM OPERATIONS
-// ==========================================
-
+// Room operations
 export async function getRoom(roomId: string): Promise<Room | null> {
   const store = getStore();
   const room = store.rooms[roomId] || null;
@@ -933,10 +921,7 @@ export async function deleteRoom(roomId: string): Promise<boolean> {
   return true;
 }
 
-// ==========================================
-// SYNCHRONIZED PLAYBACK OPERATIONS
-// ==========================================
-
+// Synchronized playback operations
 export async function getRoomPlayback(roomId: string): Promise<RoomPlaybackState | null> {
   const store = getStore();
   return store.playback[roomId] || null;
@@ -979,10 +964,7 @@ export async function updateRoomPlayback(
   return updated;
 }
 
-// ==========================================
-// MEMBERS OPERATIONS
-// ==========================================
-
+// Members operations
 export async function getMembers(roomId: string): Promise<RoomMember[]> {
   const store = getStore();
   return store.members[roomId] || [];
@@ -1133,10 +1115,7 @@ export async function transferOwnership(
   return { success: true };
 }
 
-// ==========================================
-// PLAYLIST OPERATIONS
-// ==========================================
-
+// Playlist operations
 export async function getPlaylist(roomId: string): Promise<MusicTrack[]> {
   const store = getStore();
   return store.playlists[roomId] || [];
@@ -1190,10 +1169,7 @@ export async function clearRoomPlaylist(roomId: string): Promise<boolean> {
   return true;
 }
 
-// ==========================================
-// ROOM MUSIC LIBRARY OPERATIONS (ROOM_MUSIC Firestore Collection)
-// ==========================================
-
+// Room music library operations
 export async function getRoomMusicLibrary(roomId: string): Promise<RoomMusicRecord[]> {
   const store = getStore();
   return store.room_music[roomId] || [];
@@ -1277,12 +1253,7 @@ export async function checkDuplicateTrack(
   });
 }
 
-// ==========================================
-// PRIVATE ROOM QUERYING
-// IMPORTANT: Private rooms must never appear in a public discoverable directory!
-// Only return rooms where user is host or active member.
-// ==========================================
-
+// Private room queries (only rooms user owns or joined)
 export async function getUserRooms(userId: string): Promise<{ owned: Room[]; joined: Room[] }> {
   const store = getStore();
   const owned: Room[] = [];

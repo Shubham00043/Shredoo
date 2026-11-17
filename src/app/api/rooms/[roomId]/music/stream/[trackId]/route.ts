@@ -19,25 +19,21 @@ export async function GET(
   try {
     const { roomId, trackId } = await params;
 
-    // 1. Authenticate user
     const user = await getAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // 2. Validate room & membership
     const room = await getRoom(roomId);
     if (!room) {
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    // Check if user is blocked
     const isBlocked = await isMemberBlocked(roomId, user.userId);
     if (isBlocked) {
       return NextResponse.json({ error: 'Access blocked in this room' }, { status: 403 });
     }
 
-    // Validate membership
     const member = await getMember(roomId, user.userId);
     const isHost = room.hostId === user.userId;
     if (!member && !isHost) {
@@ -47,7 +43,6 @@ export async function GET(
       );
     }
 
-    // 3. Find track record in ROOM_MUSIC
     const library = await getRoomMusicLibrary(roomId);
     const track = library.find((t) => t.trackId === trackId);
 
@@ -141,3 +136,4 @@ export async function GET(
     return NextResponse.json({ error: err?.message || 'Streaming error' }, { status: 500 });
   }
 }
+

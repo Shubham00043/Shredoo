@@ -362,7 +362,7 @@ export function RoomManagementModal({
     }
   };
 
-  // Minimal Understated Themes (Requirement 14)
+  // Curated appearance presets
   const appearancePresets = [
     {
       title: 'Warm Charcoal',

@@ -6,7 +6,6 @@ import { getAuthenticatedUser } from '@/lib/auth';
 import { getRoom, getMember, addTrackToRoomMusic, addToPlaylist, checkDuplicateTrack } from '@/lib/firestore';
 import { RoomMusicRecord, MusicTrack } from '@/types';
 
-// Configurable upload constraints (Requirement 2)
 const UPLOAD_CONFIG = {
   MAX_FILE_SIZE_BYTES: 50 * 1024 * 1024, // 50 MB
   MAX_FILES_PER_BATCH: 10,
@@ -40,13 +39,11 @@ export async function POST(
   try {
     const { roomId } = await params;
 
-    // 1. Authenticate user
     const user = await getAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: 'Authentication required to upload music.' }, { status: 401 });
     }
 
-    // 2. Validate room status & membership (Requirement 1 & 12)
     const room = await getRoom(roomId);
     if (!room) {
       return NextResponse.json({ error: 'Room not found.' }, { status: 404 });
@@ -65,7 +62,6 @@ export async function POST(
       );
     }
 
-    // 3. Parse FormData
     const formData = await req.formData();
     const rawFiles = formData.getAll('files') as File[];
     const singleFile = formData.get('file') as File;
@@ -101,13 +97,11 @@ export async function POST(
       error?: string;
     }> = [];
 
-    // 4. Process each audio file (independent error handling per file - Requirement 3)
     for (let i = 0; i < filesToProcess.length; i++) {
       const file = filesToProcess[i];
       const filename = file.name;
       const ext = path.extname(filename).toLowerCase();
 
-      // Extension validation
       if (!UPLOAD_CONFIG.ALLOWED_EXTENSIONS.includes(ext)) {
         results.push({
           filename,
@@ -117,7 +111,6 @@ export async function POST(
         continue;
       }
 
-      // MIME type validation
       const mime = file.type?.toLowerCase();
       if (mime && !UPLOAD_CONFIG.ALLOWED_MIME_TYPES.includes(mime) && !mime.startsWith('audio/')) {
         results.push({
@@ -128,7 +121,6 @@ export async function POST(
         continue;
       }
 
-      // File size validation
       if (file.size > UPLOAD_CONFIG.MAX_FILE_SIZE_BYTES) {
         results.push({
           filename,
@@ -138,29 +130,21 @@ export async function POST(
         continue;
       }
 
-      // Parse metadata from filename or form
       const baseNameWithoutExt = path.basename(filename, ext).replace(/[_-]/g, ' ').trim();
       let trackTitle = customTitle || baseNameWithoutExt || 'Untitled Track';
       let trackArtist = customArtist || user.username || 'Community Artist';
 
-      // If filename is "Artist - Title.mp3", extract metadata
       if (!customTitle && baseNameWithoutExt.includes(' - ')) {
         const parts = baseNameWithoutExt.split(' - ');
         trackArtist = parts[0].trim();
         trackTitle = parts.slice(1).join(' - ').trim();
       }
 
-      // Duplicate detection in room (Requirement 2 & 12)
-      const isDuplicate = await checkDuplicateTrack(roomId, trackTitle, trackArtist, file.size);
-      if (isDuplicate) {
-        // Warning or handle gracefully
-        // We still allow uploader if they want, but tag with unique identifier
-      }
+      await checkDuplicateTrack(roomId, trackTitle, trackArtist, file.size);
 
       const trackId = `track-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const safeFilename = `audio${ext}`;
 
-      // Structured GCS/local folder organization: rooms/{roomId}/music/{trackId}/audio/{filename}
       const trackStorageDir = path.join(baseStorage, 'rooms', roomId, 'music', trackId, 'audio');
       const relativeStoragePath = `rooms/${roomId}/music/${trackId}/audio/${safeFilename}`;
 
@@ -175,14 +159,13 @@ export async function POST(
 
         const sourceUrl = `/api/rooms/${roomId}/music/stream/${trackId}`;
 
-        // Create ROOM_MUSIC record (Requirement 8)
         const musicRecord: RoomMusicRecord = {
           trackId,
           roomId,
           title: trackTitle,
           artist: trackArtist,
           album: 'Room Uploads',
-          duration: 210, // estimated default, updated client-side or on play
+          duration: 210,
           storagePath: relativeStoragePath,
           uploadedBy: user.userId,
           uploadedByUsername: user.username,
@@ -198,7 +181,6 @@ export async function POST(
 
         await addTrackToRoomMusic(roomId, musicRecord);
 
-        // Optionally add to shared queue immediately
         if (autoQueue) {
           const queueItem: MusicTrack = {
             trackId: musicRecord.trackId,
