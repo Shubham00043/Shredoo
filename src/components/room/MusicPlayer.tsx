@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Room, MusicTrack, RoomMember } from '@/types';
+import { Room, MusicTrack, RoomMusicRecord } from '@/types';
 import { webAudioEngine } from '@/lib/audio/webAudioManager';
+import { MusicUploadModal } from '@/components/room/MusicUploadModal';
 import {
   Play,
   Pause,
@@ -22,6 +23,12 @@ import {
   Check,
   X,
   Volume2,
+  Trash2,
+  Library,
+  User,
+  Clock,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 
 interface MusicPlayerProps {
@@ -32,6 +39,8 @@ interface MusicPlayerProps {
   musicVolume: number;
   onRefreshRoom: () => void;
 }
+
+type PlayerTab = 'now_playing' | 'queue' | 'room_library' | 'my_uploads' | 'catalogues';
 
 export function MusicPlayer({
   room,
@@ -45,17 +54,25 @@ export function MusicPlayer({
   const isPlaying = room.playback?.playbackStatus === 'playing' || Boolean(room.isPlaying);
   const serverPosition = room.playback?.playbackPosition || room.playbackPosition || 0;
 
+  const [activeTab, setActiveTab] = useState<PlayerTab>('now_playing');
   const [localTime, setLocalTime] = useState(serverPosition);
   const [duration, setDuration] = useState(currentTrack?.duration || 210);
-  const [showLibrary, setShowLibrary] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<'independent' | 'bollywood' | 'upload'>('independent');
+
+  // Upload modal state
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+  // Room library state
+  const [roomLibrary, setRoomLibrary] = useState<RoomMusicRecord[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  // Search catalogues state
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<'independent' | 'bollywood'>('independent');
   const [searchResults, setSearchResults] = useState<{ bollywood: MusicTrack[]; independent: MusicTrack[] }>({
     bollywood: [],
     independent: [],
   });
   const [searching, setSearching] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [licensingNotice, setLicensingNotice] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -71,11 +88,10 @@ export function MusicPlayer({
     }
   }, [musicVolume, currentTrack]);
 
-  // Synchronized playback engine
+  // Synchronized playback engine & drift correction
   useEffect(() => {
     if (audioRef.current && currentTrack?.sourceUrl) {
       if (isPlaying) {
-        // Sync position if drifted > 2 seconds
         if (Math.abs(audioRef.current.currentTime - serverPosition) > 2) {
           audioRef.current.currentTime = serverPosition;
         }
@@ -86,8 +102,32 @@ export function MusicPlayer({
     }
   }, [isPlaying, serverPosition, currentTrack]);
 
-  // Search catalogues
-  const handleSearch = async (query: string, cat: string) => {
+  // Fetch Room Library
+  const fetchRoomLibrary = async () => {
+    setLibraryLoading(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.id}/music/library`, {
+        headers: { 'x-shredoo-user-id': currentUserId },
+      });
+      const data = await res.json();
+      if (data.tracks) {
+        setRoomLibrary(data.tracks);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'room_library' || activeTab === 'my_uploads') {
+      fetchRoomLibrary();
+    }
+  }, [activeTab, room.id]);
+
+  // Catalogue search
+  const handleSearchCatalogues = async (query: string, cat: string) => {
     setSearching(true);
     try {
       const res = await fetch(`/api/music/search?q=${encodeURIComponent(query)}&category=${cat}`);
@@ -103,15 +143,15 @@ export function MusicPlayer({
   };
 
   useEffect(() => {
-    if (showLibrary) {
-      handleSearch(searchQuery, activeCategory);
+    if (activeTab === 'catalogues') {
+      handleSearchCatalogues(searchQuery, activeCategory);
     }
-  }, [showLibrary, activeCategory]);
+  }, [activeTab, activeCategory]);
 
+  // Host playback controls
   const togglePlay = async () => {
     if (!canControlPlayback) return;
     const nextAction = isPlaying ? 'pause' : 'play';
-
     try {
       await fetch(`/api/rooms/${room.id}/music/control`, {
         method: 'POST',
@@ -119,10 +159,7 @@ export function MusicPlayer({
           'Content-Type': 'application/json',
           'x-shredoo-user-id': currentUserId,
         },
-        body: JSON.stringify({
-          action: nextAction,
-          position: localTime,
-        }),
+        body: JSON.stringify({ action: nextAction, position: localTime }),
       });
       onRefreshRoom();
     } catch (e) {
@@ -147,15 +184,106 @@ export function MusicPlayer({
     }
   };
 
-  const handleQueueTrack = async (track: MusicTrack) => {
+  const handlePreviousTrack = async () => {
+    if (!canControlPlayback) return;
+    try {
+      await fetch(`/api/rooms/${room.id}/music/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-shredoo-user-id': currentUserId,
+        },
+        body: JSON.stringify({ action: 'previous' }),
+      });
+      onRefreshRoom();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSeek = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canControlPlayback) return;
+    const newPos = parseFloat(e.target.value);
+    setLocalTime(newPos);
+    if (audioRef.current) audioRef.current.currentTime = newPos;
+
+    try {
+      await fetch(`/api/rooms/${room.id}/music/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-shredoo-user-id': currentUserId,
+        },
+        body: JSON.stringify({ action: 'seek', position: newPos }),
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePlayNow = async (track: MusicTrack | RoomMusicRecord) => {
+    if (!canControlPlayback) return;
+    const playItem: MusicTrack = {
+      trackId: track.trackId,
+      providerId: (track as any).providerId || 'user_upload',
+      category: 'independent',
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artworkUrl:
+        track.artworkUrl ||
+        'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+      duration: track.duration,
+      playbackAvailability: 'full_playback',
+      licenseType: track.licenseType,
+      territory: 'Worldwide',
+      attribution: `Queued by ${(track as any).uploadedByUsername || 'Member'}`,
+      sourceUrl: track.sourceUrl,
+    };
+
+    try {
+      await fetch(`/api/rooms/${room.id}/music/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-shredoo-user-id': currentUserId,
+        },
+        body: JSON.stringify({ action: 'play_track', track: playItem }),
+      });
+      onRefreshRoom();
+      setActiveTab('now_playing');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Queue track handler
+  const handleQueueTrack = async (track: MusicTrack | RoomMusicRecord) => {
     if (!canAddSongs) return;
 
-    // Check licensing
-    if (track.playbackAvailability === 'licensing_pending') {
+    if ((track as any).playbackAvailability === 'licensing_pending') {
       setLicensingNotice(
-        `Commercial Licensing Notice for "${track.title}": Indian popular music catalogues require an enterprise B2B partner key (T-Series / Sony Music / Saregama) for streaming. Track metadata and licensing terms are visible.`
+        `Commercial Licensing Notice for "${track.title}": Indian popular music catalogues require an enterprise B2B partner key for full streaming. Metadata preview active.`
       );
     }
+
+    const queueItem: MusicTrack = {
+      trackId: track.trackId,
+      providerId: (track as any).providerId || 'user_upload',
+      category: 'independent',
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artworkUrl:
+        track.artworkUrl ||
+        'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+      duration: track.duration,
+      playbackAvailability: 'full_playback',
+      licenseType: track.licenseType,
+      territory: 'Worldwide',
+      attribution: `Queued by ${(track as any).uploadedByUsername || 'Member'}`,
+      sourceUrl: track.sourceUrl,
+    };
 
     try {
       await fetch(`/api/rooms/${room.id}/music/queue`, {
@@ -164,7 +292,7 @@ export function MusicPlayer({
           'Content-Type': 'application/json',
           'x-shredoo-user-id': currentUserId,
         },
-        body: JSON.stringify({ track }),
+        body: JSON.stringify({ track: queueItem }),
       });
       onRefreshRoom();
     } catch (e) {
@@ -172,29 +300,41 @@ export function MusicPlayer({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
-    formData.append('artist', 'User Audio Upload');
-
+  const handleRemoveFromQueue = async (trackId: string) => {
     try {
-      const res = await fetch('/api/storage/upload', {
-        method: 'POST',
-        body: formData,
+      await fetch(`/api/rooms/${room.id}/music/queue?trackId=${encodeURIComponent(trackId)}`, {
+        method: 'DELETE',
+        headers: { 'x-shredoo-user-id': currentUserId },
       });
-      const data = await res.json();
-      if (data.track) {
-        await handleQueueTrack(data.track);
-      }
-    } catch (err) {
-      console.error('Upload failed:', err);
-    } finally {
-      setUploading(false);
+      onRefreshRoom();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearQueue = async () => {
+    if (!isHostOrMod) return;
+    try {
+      await fetch(`/api/rooms/${room.id}/music/queue?action=clear`, {
+        method: 'DELETE',
+        headers: { 'x-shredoo-user-id': currentUserId },
+      });
+      onRefreshRoom();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteLibraryTrack = async (trackId: string) => {
+    try {
+      await fetch(`/api/rooms/${room.id}/music/library?trackId=${encodeURIComponent(trackId)}`, {
+        method: 'DELETE',
+        headers: { 'x-shredoo-user-id': currentUserId },
+      });
+      await fetchRoomLibrary();
+      onRefreshRoom();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -205,7 +345,7 @@ export function MusicPlayer({
   };
 
   return (
-    <div className="bg-lounge-surface border border-lounge-border rounded-2xl shadow-xl overflow-hidden p-5 space-y-4">
+    <div className="bg-lounge-surface border border-lounge-border rounded-2xl shadow-xl overflow-hidden flex flex-col">
       {/* Hidden Audio element routed through Web Audio GainNode */}
       {currentTrack?.sourceUrl && (
         <audio
@@ -217,308 +357,454 @@ export function MusicPlayer({
         />
       )}
 
-      {/* Track Info Display */}
-      <div className="flex items-center gap-4">
-        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-lounge-bg border border-lounge-border flex-shrink-0 shadow-md">
-          {currentTrack?.artworkUrl ? (
-            <img
-              src={currentTrack.artworkUrl}
-              alt="Track thumbnail"
-              className={`w-full h-full object-cover transition duration-300 ${
-                isPlaying ? 'scale-105' : 'opacity-80'
-              }`}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-lounge-textMuted bg-lounge-card">
-              <Disc3 size={28} />
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-white truncate">
-              {currentTrack?.title || 'No song playing'}
-            </h3>
-            {isPlaying && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                SYNCHRONIZED
-              </span>
-            )}
+      {/* Music Header & Navigation Tabs (Requirement 4) */}
+      <div className="p-4 border-b border-lounge-border bg-lounge-card/40 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
+            <Radio size={16} />
           </div>
-          <p className="text-xs text-lounge-textMuted truncate mt-0.5">
-            {currentTrack?.artist || 'Open library to queue licensed independent or Bollywood tracks'}
-          </p>
-
-          {currentTrack?.licenseType && (
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-lounge-textMuted font-mono">
-              <span className="truncate">{currentTrack.licenseType}</span>
-              <span>•</span>
-              <span className="capitalize">{currentTrack.category}</span>
-            </div>
-          )}
+          <div>
+            <span className="text-xs font-bold text-white block">Shared Lounge Audio</span>
+            <span className="text-[10px] text-lounge-textMuted font-mono">
+              Independent Local Volume: {Math.round(musicVolume * 100)}%
+            </span>
+          </div>
         </div>
+
+        {/* Action Button: Upload Music (Opens modal) */}
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-md shadow-amber-950/30 active:scale-95"
+        >
+          <Upload size={13} /> Upload Songs
+        </button>
       </div>
 
-      {/* Playback Progress */}
-      <div className="space-y-1">
-        <div className="w-full bg-lounge-bg rounded-full h-1.5 overflow-hidden border border-lounge-border">
-          <div
-            className="bg-amber-500 h-full rounded-full transition-all duration-200"
-            style={{ width: `${Math.min(100, (localTime / (duration || 1)) * 100)}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-[10px] text-lounge-textMuted font-mono">
-          <span>{formatSeconds(localTime)}</span>
-          <span>{formatSeconds(duration)}</span>
-        </div>
+      {/* Sub-navigation Tabs */}
+      <div className="flex border-b border-lounge-border px-4 bg-lounge-bg/50 overflow-x-auto gap-1 py-1.5 text-xs font-semibold">
+        <button
+          onClick={() => setActiveTab('now_playing')}
+          className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'now_playing'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'text-lounge-textMuted hover:text-white'
+          }`}
+        >
+          <Disc3 size={13} /> Now Playing
+        </button>
+
+        <button
+          onClick={() => setActiveTab('queue')}
+          className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'queue'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'text-lounge-textMuted hover:text-white'
+          }`}
+        >
+          <ListMusic size={13} /> Shared Queue ({playlist.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('room_library')}
+          className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'room_library'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'text-lounge-textMuted hover:text-white'
+          }`}
+        >
+          <Library size={13} /> Room Library ({roomLibrary.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('my_uploads')}
+          className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'my_uploads'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'text-lounge-textMuted hover:text-white'
+          }`}
+        >
+          <User size={13} /> My Uploads
+        </button>
+
+        <button
+          onClick={() => setActiveTab('catalogues')}
+          className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            activeTab === 'catalogues'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'text-lounge-textMuted hover:text-white'
+          }`}
+        >
+          <Globe size={13} /> Catalogues
+        </button>
       </div>
 
-      {/* Control Buttons Bar */}
-      <div className="flex items-center justify-between pt-1">
-        <div className="flex items-center gap-2">
-          {canControlPlayback ? (
-            <>
-              <button
-                onClick={togglePlay}
-                className="p-3 rounded-full bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-950/40 transition active:scale-95"
-                title={isPlaying ? 'Pause shared music' : 'Play shared music'}
-              >
-                {isPlaying ? <Pause size={17} /> : <Play size={17} className="translate-x-0.5" />}
-              </button>
-              <button
-                onClick={handleNextTrack}
-                className="p-2.5 rounded-xl bg-lounge-card hover:bg-lounge-cardHover text-lounge-textSecondary hover:text-white transition border border-lounge-border"
-                title="Next track"
-              >
-                <SkipForward size={16} />
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-1.5 text-xs text-lounge-textMuted bg-lounge-card px-3 py-1.5 rounded-xl border border-lounge-border">
-              <Lock size={12} className="text-amber-500" />
-              <span>Playback synchronized by Host</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowLibrary(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold transition"
-          >
-            <Plus size={14} /> Browse Music Catalogues
-          </button>
-        </div>
-      </div>
-
-      {/* Upcoming Room Queue */}
-      <div className="pt-3 border-t border-lounge-border space-y-2">
-        <div className="flex items-center justify-between text-xs font-semibold text-white">
-          <span className="flex items-center gap-1.5">
-            <ListMusic size={14} className="text-amber-500" /> Room Queue ({playlist.length})
-          </span>
-          <span className="text-[10px] text-lounge-textMuted font-mono">
-            {room.musicPermissions.whoCanAdd === 'host_only' ? 'Host Only Queue' : 'Open to All'}
-          </span>
-        </div>
-
-        {playlist.length === 0 ? (
-          <p className="text-xs text-lounge-textMuted text-center py-4 bg-lounge-card/40 rounded-xl border border-dashed border-lounge-border">
-            Queue is empty. Click &quot;Browse Music Catalogues&quot; to add tracks.
-          </p>
-        ) : (
-          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-            {playlist.map((track, idx) => (
-              <div
-                key={track.trackId || idx}
-                className="flex items-center justify-between p-2 rounded-xl bg-lounge-card border border-lounge-border hover:border-lounge-borderSubtle transition text-xs"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="font-mono text-lounge-textMuted text-[10px] w-4 text-center">{idx + 1}</span>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-white truncate">{track.title}</p>
-                    <p className="text-[10px] text-lounge-textMuted truncate">{track.artist}</p>
+      {/* Tab Panels */}
+      <div className="p-5 flex-1 space-y-4">
+        {/* TAB 1: NOW PLAYING */}
+        {activeTab === 'now_playing' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="relative w-20 h-20 rounded-2xl overflow-hidden bg-lounge-bg border border-lounge-border flex-shrink-0 shadow-lg">
+                {currentTrack?.artworkUrl ? (
+                  <img
+                    src={currentTrack.artworkUrl}
+                    alt="Album Artwork"
+                    className={`w-full h-full object-cover transition-transform duration-500 ${
+                      isPlaying ? 'scale-105' : 'opacity-85'
+                    }`}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-lounge-textMuted bg-lounge-card">
+                    <Disc3 size={32} />
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-[10px] font-mono text-lounge-textMuted">
-                  <span className="capitalize">{track.category}</span>
-                  <span>{formatSeconds(track.duration)}</span>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* DUAL CATALOGUE MUSIC LIBRARY MODAL */}
-      {showLibrary && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl bg-lounge-surface border border-lounge-border rounded-3xl p-6 shadow-2xl space-y-5 max-h-[88vh] flex flex-col animate-in zoom-in-95">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-lounge-border">
-              <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Disc3 size={18} className="text-amber-500" /> Shredoo Music Catalogue
-                </h3>
-                <p className="text-xs text-lounge-textMuted">
-                  Browse Independent music (Jamendo & CC) or Popular Indian & Bollywood music
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white truncate">
+                    {currentTrack?.title || 'No track playing'}
+                  </h3>
+                  {isPlaying && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 animate-pulse">
+                      SYNCHRONIZED
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-lounge-textMuted truncate mt-0.5">
+                  {currentTrack?.artist || 'Upload music or select a song from the library to start'}
                 </p>
+
+                {currentTrack && (
+                  <div className="flex items-center gap-2 mt-2 text-[10px] text-lounge-textMuted font-mono">
+                    <span className="truncate">{currentTrack.licenseType}</span>
+                    <span>•</span>
+                    <span className="capitalize">{currentTrack.providerId?.replace('_', ' ')}</span>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => setShowLibrary(false)}
-                className="p-1.5 rounded-lg text-lounge-textMuted hover:text-white"
-              >
-                <X size={18} />
-              </button>
             </div>
 
-            {/* Category Switcher Tabs */}
-            <div className="flex gap-2 border-b border-lounge-border pb-3">
-              <button
-                onClick={() => setActiveCategory('independent')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                  activeCategory === 'independent'
-                    ? 'bg-amber-600 text-white shadow-md'
-                    : 'bg-lounge-card text-lounge-textSecondary hover:text-white'
+            {/* Interactive Progress Bar for Host / Visual Progress for Member */}
+            <div className="space-y-1">
+              <input
+                type="range"
+                min="0"
+                max={duration || 1}
+                step="1"
+                value={localTime}
+                onChange={handleSeek}
+                disabled={!canControlPlayback}
+                className={`w-full h-1.5 rounded-full appearance-none bg-lounge-bg cursor-pointer transition ${
+                  canControlPlayback ? 'accent-amber-500' : 'accent-amber-600/40 cursor-default'
                 }`}
-              >
-                <Globe size={13} /> Independent Music (Jamendo / CC)
-              </button>
-
-              <button
-                onClick={() => setActiveCategory('bollywood')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                  activeCategory === 'bollywood'
-                    ? 'bg-amber-600 text-white shadow-md'
-                    : 'bg-lounge-card text-lounge-textSecondary hover:text-white'
-                }`}
-              >
-                <Radio size={13} /> Bollywood & Indian Music
-              </button>
-
-              <button
-                onClick={() => setActiveCategory('upload')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                  activeCategory === 'upload'
-                    ? 'bg-amber-600 text-white shadow-md'
-                    : 'bg-lounge-card text-lounge-textSecondary hover:text-white'
-                }`}
-              >
-                <Upload size={13} /> Upload Audio
-              </button>
+              />
+              <div className="flex justify-between text-[10px] text-lounge-textMuted font-mono">
+                <span>{formatSeconds(localTime)}</span>
+                <span>{formatSeconds(duration)}</span>
+              </div>
             </div>
 
-            {/* Search Input for Catalogues */}
-            {activeCategory !== 'upload' && (
-              <div className="relative">
-                <Search size={15} className="absolute left-3.5 top-3.5 text-lounge-textMuted" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    handleSearch(e.target.value, activeCategory);
-                  }}
-                  placeholder={`Search ${activeCategory === 'independent' ? 'indie, ambient, lofi, or electronic' : 'Hindi film tracks, Arijit Singh, A.R. Rahman, Pritam...'}...`}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-lounge-bg border border-lounge-border text-white text-xs focus:outline-none focus:border-amber-500"
-                />
+            {/* Host Controls Bar (Requirement 5) */}
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center gap-2">
+                {canControlPlayback ? (
+                  <>
+                    <button
+                      onClick={handlePreviousTrack}
+                      className="p-2.5 rounded-xl bg-lounge-card hover:bg-lounge-cardHover text-lounge-textSecondary hover:text-white transition border border-lounge-border"
+                      title="Previous"
+                    >
+                      <SkipBack size={16} />
+                    </button>
+                    <button
+                      onClick={togglePlay}
+                      className="p-3.5 rounded-full bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-950/40 transition active:scale-95"
+                      title={isPlaying ? 'Pause for all' : 'Play for all'}
+                    >
+                      {isPlaying ? <Pause size={18} /> : <Play size={18} className="translate-x-0.5" />}
+                    </button>
+                    <button
+                      onClick={handleNextTrack}
+                      className="p-2.5 rounded-xl bg-lounge-card hover:bg-lounge-cardHover text-lounge-textSecondary hover:text-white transition border border-lounge-border"
+                      title="Next track"
+                    >
+                      <SkipForward size={16} />
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-lounge-textMuted bg-lounge-card px-3 py-1.5 rounded-xl border border-lounge-border">
+                    <Lock size={12} className="text-amber-500" />
+                    <span>Playback synchronized by Host</span>
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Licensing notice banner */}
-            {licensingNotice && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200/90 flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2">
-                  <ShieldAlert size={15} className="text-amber-400 mt-0.5 flex-shrink-0" />
-                  <p className="text-[11px] leading-relaxed">{licensingNotice}</p>
-                </div>
-                <button onClick={() => setLicensingNotice(null)} className="text-lounge-textMuted hover:text-white">
-                  <X size={13} />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTab('room_library')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-lounge-card hover:bg-lounge-cardHover text-white text-xs font-semibold border border-lounge-border transition"
+                >
+                  <Library size={13} /> Room Music
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: SHARED QUEUE */}
+        {activeTab === 'queue' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-semibold text-white">
+              <span>Upcoming Queue ({playlist.length})</span>
+              {isHostOrMod && playlist.length > 0 && (
+                <button
+                  onClick={handleClearQueue}
+                  className="text-[11px] text-red-400 hover:text-red-300 transition"
+                >
+                  Clear Queue
+                </button>
+              )}
+            </div>
+
+            {playlist.length === 0 ? (
+              <div className="text-center py-8 bg-lounge-card/40 rounded-2xl border border-dashed border-lounge-border space-y-2">
+                <ListMusic size={28} className="mx-auto text-lounge-textMuted opacity-40" />
+                <p className="text-xs text-lounge-textMuted font-medium">Shared queue is currently empty</p>
+                <button
+                  onClick={() => setActiveTab('room_library')}
+                  className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline font-semibold"
+                >
+                  Pick from Room Library <ArrowRight size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {playlist.map((track, idx) => (
+                  <div
+                    key={track.trackId || idx}
+                    className="p-3 rounded-xl bg-lounge-card border border-lounge-border flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span className="font-mono text-lounge-textMuted text-xs w-4 text-center">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-white truncate">{track.title}</p>
+                        <p className="text-[10px] text-lounge-textMuted truncate">
+                          {track.artist} {track.addedByName && `• Queued by ${track.addedByName}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-lounge-textMuted">
+                        {formatSeconds(track.duration)}
+                      </span>
+                      {canControlPlayback && (
+                        <button
+                          onClick={() => handlePlayNow(track)}
+                          className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold hover:bg-amber-500/20 transition"
+                        >
+                          Play Now
+                        </button>
+                      )}
+                      {(isHostOrMod || track.addedBy === currentUserId) && (
+                        <button
+                          onClick={() => handleRemoveFromQueue(track.trackId)}
+                          className="p-1 rounded text-lounge-textMuted hover:text-red-400 transition"
+                          title="Remove from queue"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3 & 4: ROOM MUSIC LIBRARY / MY UPLOADS */}
+        {(activeTab === 'room_library' || activeTab === 'my_uploads') && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-semibold text-white">
+              <span>
+                {activeTab === 'my_uploads' ? 'Songs Uploaded by You' : 'Room Uploaded Library'}
+              </span>
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+              >
+                <Plus size={12} /> Upload More Songs
+              </button>
+            </div>
+
+            {roomLibrary.length === 0 ? (
+              <div className="text-center py-8 bg-lounge-card/40 rounded-2xl border border-dashed border-lounge-border space-y-2">
+                <Library size={28} className="mx-auto text-lounge-textMuted opacity-40" />
+                <p className="text-xs text-lounge-textMuted font-medium">No songs uploaded to this room yet</p>
+                <button
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-md shadow-amber-950/40"
+                >
+                  Upload First Song
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {(activeTab === 'my_uploads'
+                  ? roomLibrary.filter((t) => t.uploadedBy === currentUserId)
+                  : roomLibrary
+                ).map((track) => (
+                  <div
+                    key={track.trackId}
+                    className="p-3 rounded-xl bg-lounge-card border border-lounge-border flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-white truncate">{track.title}</p>
+                      <p className="text-[10px] text-lounge-textMuted truncate">
+                        {track.artist} • Uploaded by {track.uploadedByUsername}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-lounge-textMuted">
+                        {formatSeconds(track.duration)}
+                      </span>
+                      {canAddSongs && (
+                        <button
+                          onClick={() => handleQueueTrack(track)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold hover:bg-amber-500/20 transition flex items-center gap-1"
+                          title="Add to shared queue"
+                        >
+                          <Plus size={10} /> Queue
+                        </button>
+                      )}
+                      {canControlPlayback && (
+                        <button
+                          onClick={() => handlePlayNow(track)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-[10px] font-bold hover:bg-amber-700 transition"
+                          title="Play now"
+                        >
+                          Play
+                        </button>
+                      )}
+                      {(isHostOrMod || track.uploadedBy === currentUserId) && (
+                        <button
+                          onClick={() => handleDeleteLibraryTrack(track.trackId)}
+                          className="p-1 rounded text-lounge-textMuted hover:text-red-400 transition"
+                          title="Delete from library"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 5: CATALOGUES */}
+        {activeTab === 'catalogues' && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-lounge-textMuted" />
+                <input
+                  type="text"
+                  placeholder="Search Jamendo Creative Commons or Bollywood catalogue..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearchCatalogues(searchQuery, activeCategory)}
+                  className="w-full pl-8 pr-3 py-2 rounded-xl bg-lounge-bg border border-lounge-border text-white text-xs focus:outline-none focus:border-amber-500 transition"
+                />
+              </div>
+              <div className="flex bg-lounge-bg border border-lounge-border rounded-xl p-0.5 text-[11px] font-semibold">
+                <button
+                  onClick={() => setActiveCategory('independent')}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    activeCategory === 'independent' ? 'bg-amber-600 text-white' : 'text-lounge-textMuted'
+                  }`}
+                >
+                  Independent (CC)
+                </button>
+                <button
+                  onClick={() => setActiveCategory('bollywood')}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    activeCategory === 'bollywood' ? 'bg-amber-600 text-white' : 'text-lounge-textMuted'
+                  }`}
+                >
+                  Bollywood
+                </button>
+              </div>
+            </div>
+
+            {licensingNotice && (
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/40 text-amber-300 text-xs">
+                {licensingNotice}
+              </div>
             )}
 
-            {/* Results Content Area */}
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {activeCategory === 'upload' ? (
-                <div className="p-8 text-center rounded-2xl bg-lounge-card border border-dashed border-lounge-border space-y-3">
-                  <Upload size={32} className="mx-auto text-amber-500" />
-                  <h4 className="text-sm font-bold text-white">Upload Your Personal Audio Track</h4>
-                  <p className="text-xs text-lounge-textMuted max-w-sm mx-auto">
-                    Select an MP3 or WAV file from your device to stream in this private lounge.
-                  </p>
-                  <label className="inline-block px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition cursor-pointer">
-                    {uploading ? 'Processing & Uploading...' : 'Choose Audio File'}
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      disabled={uploading}
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              ) : searching ? (
-                <div className="py-12 text-center text-xs text-lounge-textMuted">
-                  Searching {activeCategory} catalog...
-                </div>
-              ) : (
-                (activeCategory === 'independent' ? searchResults.independent : searchResults.bollywood).map(
-                  (track) => {
-                    const isB2BRequired = track.playbackAvailability === 'licensing_pending';
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {(activeCategory === 'independent' ? searchResults.independent : searchResults.bollywood).map(
+                (track) => (
+                  <div
+                    key={track.trackId}
+                    className="p-3 rounded-xl bg-lounge-card border border-lounge-border flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-white truncate">{track.title}</p>
+                      <p className="text-[10px] text-lounge-textMuted truncate">
+                        {track.artist} • {track.licenseType}
+                      </p>
+                    </div>
 
-                    return (
-                      <div
-                        key={track.trackId}
-                        className="p-3 rounded-xl bg-lounge-card border border-lounge-border hover:border-lounge-borderSubtle transition flex items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={track.artworkUrl}
-                            alt={track.title}
-                            className="w-11 h-11 rounded-lg bg-lounge-bg object-cover border border-lounge-border flex-shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <h4 className="text-xs font-bold text-white truncate">{track.title}</h4>
-                            <p className="text-[11px] text-lounge-textMuted truncate">{track.artist}</p>
-                            <span className="text-[10px] text-lounge-textMuted block font-mono">
-                              {track.album} • {track.licenseType}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {isB2BRequired ? (
-                            <button
-                              onClick={() => handleQueueTrack(track)}
-                              className="px-3 py-1.5 rounded-lg bg-lounge-bg hover:bg-lounge-surface text-amber-400 border border-amber-500/30 text-[11px] font-semibold transition"
-                              title="Commercial B2B License needed for full audio stream"
-                            >
-                              Catalogue Info
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                handleQueueTrack(track);
-                                setShowLibrary(false);
-                              }}
-                              className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1"
-                            >
-                              <Plus size={12} /> Add to Lounge
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-lounge-textMuted">
+                        {formatSeconds(track.duration)}
+                      </span>
+                      {canAddSongs && (
+                        <button
+                          onClick={() => handleQueueTrack(track)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold hover:bg-amber-500/20 transition flex items-center gap-1"
+                        >
+                          <Plus size={10} /> Queue
+                        </button>
+                      )}
+                      {canControlPlayback && track.playbackAvailability === 'full_playback' && (
+                        <button
+                          onClick={() => handlePlayNow(track)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-[10px] font-bold hover:bg-amber-700 transition"
+                        >
+                          Play
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )
               )}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Multiple-Song Upload Modal */}
+      <MusicUploadModal
+        roomId={room.id}
+        currentUserId={currentUserId}
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadSuccess={(tracks) => {
+          fetchRoomLibrary();
+          onRefreshRoom();
+          setActiveTab('room_library');
+        }}
+      />
     </div>
   );
 }

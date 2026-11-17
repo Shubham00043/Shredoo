@@ -20,6 +20,8 @@ import {
   AdminAuditLog,
   PlatformSettings,
   ReportStatus,
+  RoomMusicRecord,
+  RoomPlaylistRecord,
 } from '@/types';
 
 // Determine writable data directory (uses /tmp on Vercel or cloud serverless environments)
@@ -62,6 +64,7 @@ export interface ShredooStore {
   admin_audit_logs: AdminAuditLog[];
   platform_settings: PlatformSettings;
   music_tracks: Record<string, MusicTrack>;
+  room_music: Record<string, RoomMusicRecord[]>; // key: roomId (ROOM_MUSIC Firestore collection)
 }
 
 /**
@@ -146,6 +149,7 @@ function initStore(): ShredooStore {
         };
       }
       if (!parsed.music_tracks) parsed.music_tracks = {};
+      if (!parsed.room_music) parsed.room_music = {};
 
       // Provision initial Super Admin from environment if configured
       const envSuperAdminId = process.env.SUPER_ADMIN_CLERK_ID;
@@ -380,6 +384,7 @@ function initStore(): ShredooStore {
       updatedBy: 'system',
     },
     music_tracks: {},
+    room_music: {},
   };
 
   try {
@@ -1142,8 +1147,12 @@ export async function addToPlaylist(roomId: string, song: MusicTrack): Promise<M
   if (!store.playlists[roomId]) {
     store.playlists[roomId] = [];
   }
-  store.playlists[roomId].push(song);
-  saveStore();
+  // Prevent duplicate track entry in the active queue if already queued
+  const isDuplicateInQueue = store.playlists[roomId].some((t) => t.trackId === song.trackId);
+  if (!isDuplicateInQueue) {
+    store.playlists[roomId].push(song);
+    saveStore();
+  }
   return song;
 }
 
@@ -1155,6 +1164,117 @@ export async function removeFromPlaylist(roomId: string, songId: string): Promis
   const changed = store.playlists[roomId].length < initial;
   if (changed) saveStore();
   return changed;
+}
+
+export async function reorderRoomPlaylist(
+  roomId: string,
+  fromIndex: number,
+  toIndex: number
+): Promise<MusicTrack[]> {
+  const store = getStore();
+  if (!store.playlists[roomId]) store.playlists[roomId] = [];
+
+  const queue = store.playlists[roomId];
+  if (fromIndex >= 0 && fromIndex < queue.length && toIndex >= 0 && toIndex < queue.length) {
+    const [moved] = queue.splice(fromIndex, 1);
+    queue.splice(toIndex, 0, moved);
+    saveStore();
+  }
+  return queue;
+}
+
+export async function clearRoomPlaylist(roomId: string): Promise<boolean> {
+  const store = getStore();
+  store.playlists[roomId] = [];
+  saveStore();
+  return true;
+}
+
+// ==========================================
+// ROOM MUSIC LIBRARY OPERATIONS (ROOM_MUSIC Firestore Collection)
+// ==========================================
+
+export async function getRoomMusicLibrary(roomId: string): Promise<RoomMusicRecord[]> {
+  const store = getStore();
+  return store.room_music[roomId] || [];
+}
+
+export async function addTrackToRoomMusic(
+  roomId: string,
+  track: RoomMusicRecord
+): Promise<RoomMusicRecord> {
+  const store = getStore();
+  if (!store.room_music[roomId]) {
+    store.room_music[roomId] = [];
+  }
+
+  // Check for duplicate in room library by trackId or same title + artist + fileSize
+  const existingIdx = store.room_music[roomId].findIndex(
+    (t) =>
+      t.trackId === track.trackId ||
+      (t.title.toLowerCase() === track.title.toLowerCase() &&
+        t.artist.toLowerCase() === track.artist.toLowerCase() &&
+        t.fileSize === track.fileSize)
+  );
+
+  if (existingIdx >= 0) {
+    store.room_music[roomId][existingIdx] = track;
+  } else {
+    store.room_music[roomId].unshift(track); // recently added first
+  }
+
+  saveStore();
+  return track;
+}
+
+export async function removeTrackFromRoomMusic(
+  roomId: string,
+  trackId: string
+): Promise<{ success: boolean; removedTrack?: RoomMusicRecord }> {
+  const store = getStore();
+  if (!store.room_music[roomId]) return { success: false };
+
+  const trackIdx = store.room_music[roomId].findIndex((t) => t.trackId === trackId);
+  if (trackIdx === -1) return { success: false };
+
+  const [removedTrack] = store.room_music[roomId].splice(trackIdx, 1);
+
+  // Also remove from shared queue if present
+  if (store.playlists[roomId]) {
+    store.playlists[roomId] = store.playlists[roomId].filter((t) => t.trackId !== trackId);
+  }
+
+  // Also clear if currently playing
+  if (store.playback[roomId] && store.playback[roomId].currentTrackId === trackId) {
+    store.playback[roomId].currentTrack = null;
+    store.playback[roomId].currentTrackId = null;
+    store.playback[roomId].playbackStatus = 'stopped';
+    store.playback[roomId].playbackPosition = 0;
+    store.playback[roomId].playbackVersion += 1;
+    store.playback[roomId].updatedAt = new Date().toISOString();
+  }
+
+  saveStore();
+  return { success: true, removedTrack };
+}
+
+export async function checkDuplicateTrack(
+  roomId: string,
+  title: string,
+  artist?: string,
+  fileSize?: number
+): Promise<boolean> {
+  const store = getStore();
+  const library = store.room_music[roomId] || [];
+  const cleanTitle = (title || '').trim().toLowerCase();
+  const cleanArtist = (artist || '').trim().toLowerCase();
+
+  return library.some((t) => {
+    const titleMatch = t.title.toLowerCase() === cleanTitle;
+    const artistMatch = cleanArtist ? t.artist.toLowerCase() === cleanArtist : true;
+    const sizeMatch = fileSize && t.fileSize ? t.fileSize === fileSize : false;
+    return (titleMatch && artistMatch) || sizeMatch;
+  });
 }
 
 // ==========================================

@@ -36,7 +36,7 @@ export async function POST(
     const currentPlayback = await getRoomPlayback(roomId);
 
     let nextTrack = currentPlayback?.currentTrack || (playlist.length > 0 ? playlist[0] : null);
-    let playbackStatus: 'playing' | 'paused' | 'buffering' = currentPlayback?.playbackStatus || 'paused';
+    let playbackStatus: 'playing' | 'paused' | 'buffering' | 'stopped' = currentPlayback?.playbackStatus || 'paused';
     let playbackPosition = typeof position === 'number' ? position : (currentPlayback?.playbackPosition || 0);
 
     if (action === 'play') {
@@ -73,6 +73,12 @@ export async function POST(
       nextTrack = track;
       playbackStatus = 'playing';
       playbackPosition = 0;
+    } else if (action === 'stop') {
+      playbackStatus = 'paused';
+      playbackPosition = 0;
+    } else if (action === 'previous') {
+      playbackPosition = 0;
+      playbackStatus = 'playing';
     }
 
     const updatedPlayback = await updateRoomPlayback(roomId, {

@@ -58,6 +58,42 @@ export interface MusicTrack {
   addedBy?: string;
   addedByName?: string;
   addedAt?: string;
+  storagePath?: string;
+  uploadedBy?: string;
+  uploadedByUsername?: string;
+}
+
+// Dedicated ROOM_MUSIC record in Firestore
+export interface RoomMusicRecord {
+  trackId: string;
+  roomId: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number; // in seconds
+  storagePath: string;
+  artworkPath?: string;
+  uploadedBy: string; // userId
+  uploadedByUsername: string;
+  createdAt: string;
+  licenseType: string;
+  playbackStatus: 'available' | 'processing' | 'failed' | 'removed';
+  fileSize?: number;
+  mimeType?: string;
+  sourceUrl: string;
+  artworkUrl?: string;
+}
+
+// Dedicated ROOM_PLAYLISTS record in Firestore
+export interface RoomPlaylistRecord {
+  roomId: string;
+  queue: MusicTrack[];
+  currentTrackId: string | null;
+  playbackStatus: 'playing' | 'paused' | 'buffering' | 'stopped';
+  playbackPosition: number;
+  updatedAt: string;
+  updatedBy: string;
+  playbackVersion: number;
 }
 
 // Backward compatibility alias
@@ -67,7 +103,7 @@ export interface RoomPlaybackState {
   roomId: string;
   currentTrackId: string | null;
   currentTrack: MusicTrack | null;
-  playbackStatus: 'playing' | 'paused' | 'buffering';
+  playbackStatus: 'playing' | 'paused' | 'buffering' | 'stopped';
   playbackPosition: number;
   updatedAt: string;
   updatedBy: string;
