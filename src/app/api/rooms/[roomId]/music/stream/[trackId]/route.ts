@@ -91,7 +91,7 @@ export async function GET(
     else if (ext === '.ogg') mimeType = 'audio/ogg';
     else if (ext === '.m4a') mimeType = 'audio/mp4';
 
-    // 4. Handle Range requests for smooth scrubbing/seeking
+    // Handle HTTP 206 Range requests for smooth streaming and seek bar scrubbing
     const range = req.headers.get('range');
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
@@ -99,23 +99,19 @@ export async function GET(
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       const chunkSize = end - start + 1;
 
-      const fileStream = fs.createReadStream(targetFilePath, { start, end });
-      const stream = new ReadableStream({
-        start(controller) {
-          fileStream.on('data', (chunk) => controller.enqueue(chunk));
-          fileStream.on('end', () => controller.close());
-          fileStream.on('error', (err) => controller.error(err));
-        },
-      });
+      const fd = fs.openSync(targetFilePath, 'r');
+      const buffer = Buffer.alloc(chunkSize);
+      fs.readSync(fd, buffer, 0, chunkSize, start);
+      fs.closeSync(fd);
 
-      return new NextResponse(stream as any, {
+      return new NextResponse(buffer, {
         status: 206,
         headers: {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize.toString(),
           'Content-Type': mimeType,
-          'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+          'Cache-Control': 'public, max-age=3600',
         },
       });
     }

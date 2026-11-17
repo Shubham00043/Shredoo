@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Room, MusicTrack, RoomMusicRecord } from '@/types';
 import { webAudioEngine } from '@/lib/audio/webAudioManager';
 import { MusicUploadModal } from '@/components/room/MusicUploadModal';
@@ -50,12 +50,27 @@ export function MusicPlayer({
   musicVolume,
   onRefreshRoom,
 }: MusicPlayerProps) {
-  const currentTrack = room.playback?.currentTrack || room.currentSong || null;
-  const isPlaying = room.playback?.playbackStatus === 'playing' || Boolean(room.isPlaying);
-  const serverPosition = room.playback?.playbackPosition || room.playbackPosition || 0;
+  const playbackState = room.playback;
+  const currentTrack = playbackState?.currentTrack || room.currentSong || null;
+  const isPlaying = playbackState?.playbackStatus === 'playing' || Boolean(room.isPlaying);
+  const playbackVersion = playbackState?.playbackVersion || 1;
+  const currentTrackId = currentTrack?.trackId || null;
+  const currentSourceUrl = currentTrack?.sourceUrl || null;
+
+  // Calculate live expected playback position based on timestamp to avoid static resets
+  const getCalculatedServerTime = useCallback(() => {
+    if (!playbackState) return 0;
+    const basePos = playbackState.playbackPosition || 0;
+    if (playbackState.playbackStatus !== 'playing') {
+      return basePos;
+    }
+    const elapsedSeconds = (Date.now() - new Date(playbackState.updatedAt).getTime()) / 1000;
+    const validElapsed = !isNaN(elapsedSeconds) && elapsedSeconds > 0 ? elapsedSeconds : 0;
+    return basePos + validElapsed;
+  }, [playbackState?.playbackPosition, playbackState?.playbackStatus, playbackState?.updatedAt]);
 
   const [activeTab, setActiveTab] = useState<PlayerTab>('now_playing');
-  const [localTime, setLocalTime] = useState(serverPosition);
+  const [localTime, setLocalTime] = useState(getCalculatedServerTime());
   const [duration, setDuration] = useState(currentTrack?.duration || 210);
 
   // Upload modal state
@@ -76,6 +91,9 @@ export function MusicPlayer({
   const [licensingNotice, setLicensingNotice] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSyncedVersionRef = useRef<number>(-1);
+  const lastTrackIdRef = useRef<string | null>(null);
+  const isLocalActionRef = useRef<boolean>(false);
 
   const canAddSongs = room.musicPermissions.whoCanAdd === 'everyone' || isHostOrMod;
   const canControlPlayback = room.musicPermissions.whoCanControl === 'everyone' || isHostOrMod;
@@ -86,21 +104,78 @@ export function MusicPlayer({
       webAudioEngine.attachMusicElement(audioRef.current);
       webAudioEngine.setMusicVolume(musicVolume);
     }
-  }, [musicVolume, currentTrack]);
+  }, [musicVolume, currentTrackId]);
 
-  // Synchronized playback engine & drift correction
+  // Synchronized playback engine with continuous playback protection
   useEffect(() => {
-    if (audioRef.current && currentTrack?.sourceUrl) {
+    const audio = audioRef.current;
+    if (!audio || !currentSourceUrl) return;
+
+    const trackChanged = lastTrackIdRef.current !== currentTrackId;
+    const versionChanged = lastSyncedVersionRef.current !== playbackVersion;
+
+    // Track changed: load new song and sync starting position
+    if (trackChanged) {
+      lastTrackIdRef.current = currentTrackId;
+      lastSyncedVersionRef.current = playbackVersion;
+      const targetTime = getCalculatedServerTime();
+      if (Math.abs(audio.currentTime - targetTime) > 1.5) {
+        audio.currentTime = targetTime;
+      }
       if (isPlaying) {
-        if (Math.abs(audioRef.current.currentTime - serverPosition) > 2) {
-          audioRef.current.currentTime = serverPosition;
-        }
-        audioRef.current.play().catch(() => {});
+        audio.play().catch(() => {});
       } else {
-        audioRef.current.pause();
+        audio.pause();
+      }
+      return;
+    }
+
+    // Explicit host control event (version changed)
+    if (versionChanged) {
+      lastSyncedVersionRef.current = playbackVersion;
+
+      // If action was initiated locally on this client, avoid jarring position overrides
+      if (isLocalActionRef.current) {
+        isLocalActionRef.current = false;
+        if (isPlaying && audio.paused) {
+          audio.play().catch(() => {});
+        } else if (!isPlaying && !audio.paused) {
+          audio.pause();
+        }
+        return;
+      }
+
+      // Action from remote host: sync position smoothly
+      const targetTime = getCalculatedServerTime();
+      if (Math.abs(audio.currentTime - targetTime) > 3) {
+        audio.currentTime = targetTime;
+      }
+      if (isPlaying && audio.paused) {
+        audio.play().catch(() => {});
+      } else if (!isPlaying && !audio.paused) {
+        audio.pause();
+      }
+      return;
+    }
+
+    // Periodic poll without version change:
+    // Audio is playing continuously - NEVER interrupt or seek during normal playback!
+    if (isPlaying) {
+      if (audio.paused) {
+        audio.play().catch(() => {});
+      } else {
+        // Only adjust if extreme drift occurred (e.g. tab backgrounded for > 10s)
+        const targetTime = getCalculatedServerTime();
+        if (Math.abs(audio.currentTime - targetTime) > 10) {
+          audio.currentTime = targetTime;
+        }
+      }
+    } else {
+      if (!audio.paused) {
+        audio.pause();
       }
     }
-  }, [isPlaying, serverPosition, currentTrack]);
+  }, [isPlaying, playbackVersion, currentTrackId, currentSourceUrl, getCalculatedServerTime]);
 
   // Fetch Room Library
   const fetchRoomLibrary = async () => {
@@ -152,6 +227,14 @@ export function MusicPlayer({
   const togglePlay = async () => {
     if (!canControlPlayback) return;
     const nextAction = isPlaying ? 'pause' : 'play';
+    isLocalActionRef.current = true;
+    if (audioRef.current) {
+      if (nextAction === 'play') {
+        audioRef.current.play().catch(() => {});
+      } else {
+        audioRef.current.pause();
+      }
+    }
     try {
       await fetch(`/api/rooms/${room.id}/music/control`, {
         method: 'POST',
@@ -159,7 +242,7 @@ export function MusicPlayer({
           'Content-Type': 'application/json',
           'x-shredoo-user-id': currentUserId,
         },
-        body: JSON.stringify({ action: nextAction, position: localTime }),
+        body: JSON.stringify({ action: nextAction, position: audioRef.current?.currentTime ?? localTime }),
       });
       onRefreshRoom();
     } catch (e) {
@@ -169,6 +252,7 @@ export function MusicPlayer({
 
   const handleNextTrack = async () => {
     if (!canControlPlayback) return;
+    isLocalActionRef.current = true;
     try {
       await fetch(`/api/rooms/${room.id}/music/control`, {
         method: 'POST',
@@ -186,6 +270,8 @@ export function MusicPlayer({
 
   const handlePreviousTrack = async () => {
     if (!canControlPlayback) return;
+    isLocalActionRef.current = true;
+    if (audioRef.current) audioRef.current.currentTime = 0;
     try {
       await fetch(`/api/rooms/${room.id}/music/control`, {
         method: 'POST',
@@ -205,6 +291,7 @@ export function MusicPlayer({
     if (!canControlPlayback) return;
     const newPos = parseFloat(e.target.value);
     setLocalTime(newPos);
+    isLocalActionRef.current = true;
     if (audioRef.current) audioRef.current.currentTime = newPos;
 
     try {
@@ -223,6 +310,8 @@ export function MusicPlayer({
 
   const handlePlayNow = async (track: MusicTrack | RoomMusicRecord) => {
     if (!canControlPlayback) return;
+    isLocalActionRef.current = true;
+    if (audioRef.current) audioRef.current.currentTime = 0;
     const playItem: MusicTrack = {
       trackId: track.trackId,
       providerId: (track as any).providerId || 'user_upload',
@@ -351,8 +440,16 @@ export function MusicPlayer({
         <audio
           ref={audioRef}
           src={currentTrack.sourceUrl}
+          preload="auto"
           onTimeUpdate={(e) => setLocalTime(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || currentTrack.duration || 210)}
+          onLoadedMetadata={(e) => {
+            const audioDur = e.currentTarget.duration;
+            if (audioDur && !isNaN(audioDur) && isFinite(audioDur)) {
+              setDuration(audioDur);
+            } else if (currentTrack.duration) {
+              setDuration(currentTrack.duration);
+            }
+          }}
           onEnded={handleNextTrack}
         />
       )}
