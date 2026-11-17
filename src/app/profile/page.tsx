@@ -107,7 +107,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="flex items-center justify-center gap-2">
-                  <SignOutButton redirectUrl="/sign-in">
+                  <SignOutButton>
                     <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-lounge-card hover:bg-lounge-cardHover border border-lounge-border text-xs text-gray-300 hover:text-white font-semibold transition">
                       <LogOut size={14} /> Sign Out
                     </button>

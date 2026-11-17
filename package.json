@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.10.2",
-    "@clerk/themes": "^2.4.57",
     "@google-cloud/firestore": "^9.4.1",
     "@livekit/components-react": "^2.6.13",
     "clsx": "^2.1.1",
