@@ -19,12 +19,11 @@ export interface AuthUser {
  */
 export function isGmailAddress(email?: string | null): boolean {
   if (!email) return false;
-  const clean = email.trim().toLowerCase();
-  return clean.endsWith('@gmail.com');
+  return true;
 }
 
 /**
- * Enforce verified @gmail.com restriction on server-side
+ * Public web application - allow all authenticated users
  */
 export function validateGmailUser(user: AuthUser | null): {
   authorized: boolean;
@@ -32,12 +31,6 @@ export function validateGmailUser(user: AuthUser | null): {
 } {
   if (!user) {
     return { authorized: false, error: 'Authentication required. Please sign in.' };
-  }
-  if (!user.isVerifiedGmail) {
-    return {
-      authorized: false,
-      error: 'Access restricted: Only verified @gmail.com accounts are permitted on SHREDoo.',
-    };
   }
   return { authorized: true };
 }
@@ -50,9 +43,8 @@ export function validateActiveUser(user: AuthUser | null): {
   status: number;
   error?: string;
 } {
-  const gmailCheck = validateGmailUser(user);
-  if (!gmailCheck.authorized) {
-    return { authorized: false, status: 403, error: gmailCheck.error };
+  if (!user) {
+    return { authorized: false, status: 401, error: 'Authentication required. Please sign in.' };
   }
 
   if (user?.isRestricted) {

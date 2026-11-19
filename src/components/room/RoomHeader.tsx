@@ -45,7 +45,7 @@ export function RoomHeader({
 
   const getInviteUrl = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/room/${room.id}?code=${room.inviteCode}`;
+    return `${origin}/room/${room.id}`;
   };
 
   const copyInvite = () => {

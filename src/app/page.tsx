@@ -55,35 +55,38 @@ export default function DashboardPage() {
     fetchRooms();
   }, [currentUserId]);
 
-  // If user is signed in but has not yet claimed a unique username, direct to setup
-  useEffect(() => {
-    if (isLoaded && isSignedIn && user?.id) {
-      fetch('/api/user/sync')
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.profile && d.profile.hasCompletedOnboarding === false) {
-            window.location.href = '/setup-username';
-          }
-        })
-        .catch(() => {});
-    }
-  }, [isLoaded, isSignedIn, user?.id]);
-
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = codeQuery.trim().toUpperCase();
-    if (!clean) return;
+    const raw = codeQuery.trim();
+    if (!raw) return;
 
-    // Check if code matches any known room locally first
-    const foundLocal = [...ownedRooms, ...joinedRooms].find(
-      (r) => r.inviteCode && r.inviteCode.toUpperCase() === clean
-    );
-    if (foundLocal) {
-      window.location.href = `/room/${foundLocal.id}?code=${clean}`;
+    // 1. If user entered a full URL or relative path with /room/
+    if (raw.includes('/room/')) {
+      const match = raw.match(/\/room\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        window.location.href = `/room/${match[1]}`;
+        return;
+      }
+    }
+
+    // 2. If user entered a direct room ID (e.g. room-...)
+    if (raw.toLowerCase().startsWith('room-')) {
+      window.location.href = `/room/${raw.toLowerCase()}`;
       return;
     }
 
-    // Call room lookup API
+    const clean = raw.toUpperCase();
+
+    // 3. Check if code matches any known room locally first
+    const foundLocal = [...ownedRooms, ...joinedRooms].find(
+      (r) => (r.inviteCode && r.inviteCode.toUpperCase() === clean) || r.id === raw
+    );
+    if (foundLocal) {
+      window.location.href = `/room/${foundLocal.id}`;
+      return;
+    }
+
+    // 4. Call room lookup API
     setIsLookingUpCode(true);
     setCodeError(null);
     try {
@@ -94,7 +97,7 @@ export default function DashboardPage() {
         return;
       }
 
-      window.location.href = `/room/${data.roomId}?code=${clean}`;
+      window.location.href = `/room/${data.roomId}`;
     } catch (err: any) {
       setCodeError(err.message || 'Error looking up room code. Please try again.');
     } finally {
@@ -144,10 +147,10 @@ export default function DashboardPage() {
         <div className="p-5 rounded-2xl bg-lounge-surface border border-lounge-border flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Key size={15} className="text-amber-500" /> Have an Invitation Code?
+              <Key size={15} className="text-amber-500" /> Have an Invitation Code or Room Link?
             </h3>
             <p className="text-xs text-lounge-textMuted mt-0.5">
-              Enter private invite code to access an authorized room.
+              Enter invite code or room ID to join your friends instantly.
             </p>
           </div>
 
@@ -160,8 +163,8 @@ export default function DashboardPage() {
                   setCodeQuery(e.target.value.toUpperCase());
                   setCodeError(null);
                 }}
-                placeholder="e.g. SHREDD2 or SH7M9P"
-                className="px-3.5 py-2 rounded-xl bg-lounge-bg border border-lounge-border text-white text-xs font-mono uppercase tracking-wider focus:outline-none focus:border-amber-500 w-full sm:w-52"
+                placeholder="e.g. SH4A8KLU or room ID"
+                className="px-3.5 py-2 rounded-xl bg-lounge-bg border border-lounge-border text-white text-xs font-mono uppercase tracking-wider focus:outline-none focus:border-amber-500 w-full sm:w-56"
               />
               <button
                 type="submit"

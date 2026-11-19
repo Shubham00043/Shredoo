@@ -3,6 +3,13 @@ import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
 import {
+  saveRoomToCloud,
+  getRoomFromCloud,
+  findRoomByCodeFromCloud,
+  getUserRoomsFromCloud,
+  getCloudRooms,
+} from './cloud-store';
+import {
   Room,
   RoomMember,
   BlockedMember,
@@ -824,6 +831,15 @@ export async function findRoomByCode(code: string): Promise<Room | null> {
     }
   }
 
+  // 4. Fallback search across Clerk Cloud Metadata for cross-lambda sync
+  try {
+    const cloudRoom = await findRoomByCodeFromCloud(code);
+    if (cloudRoom) {
+      store.rooms[cloudRoom.id] = cloudRoom;
+      return cloudRoom;
+    }
+  } catch (e) {}
+
   return null;
 }
 
@@ -846,7 +862,16 @@ export function sanitizeRoomForPublic(room: Room, viewerUserId?: string): Room {
 // Room operations
 export async function getRoom(roomId: string): Promise<Room | null> {
   const store = getStore();
-  const room = store.rooms[roomId] || null;
+  let room = store.rooms[roomId] || null;
+  if (!room) {
+    try {
+      const cloudRoom = await getRoomFromCloud(roomId);
+      if (cloudRoom) {
+        store.rooms[cloudRoom.id] = cloudRoom;
+        room = cloudRoom;
+      }
+    } catch (e) {}
+  }
   if (!room) return null;
 
   // attach playback state
@@ -921,6 +946,8 @@ export async function createRoom(data: Omit<Room, 'createdAt' | 'updatedAt'>): P
   };
 
   saveStore();
+  // Cloud sync to Clerk metadata
+  saveRoomToCloud(newRoom).catch(() => {});
   return newRoom;
 }
 
@@ -1307,10 +1334,29 @@ export async function getUserRooms(userId: string): Promise<{ owned: Room[]; joi
     }
   }
 
+  // Pull from Clerk Cloud Metadata to recover any rooms created on other Vercel Lambdas
+  try {
+    const cloudRooms = await getUserRoomsFromCloud(userId);
+    for (const cr of cloudRooms) {
+      if (!owned.some((o) => o.id === cr.id)) {
+        owned.push(cr);
+        store.rooms[cr.id] = cr;
+      }
+    }
+  } catch (e) {}
+
   return { owned, joined };
 }
 
 export async function getAllRooms(): Promise<Room[]> {
   const store = getStore();
-  return Object.values(store.rooms);
+  const rooms = { ...store.rooms };
+  try {
+    const cloudRooms = await getCloudRooms();
+    for (const cr of cloudRooms) {
+      rooms[cr.id] = cr;
+      store.rooms[cr.id] = cr;
+    }
+  } catch (e) {}
+  return Object.values(rooms);
 }

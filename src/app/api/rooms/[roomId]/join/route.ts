@@ -39,15 +39,7 @@ export async function POST(
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    // 1. Check if room is closed
-    if (room.isClosed && room.hostId !== userId) {
-      return NextResponse.json(
-        { error: 'This room is currently closed by the host. No new participants may join.' },
-        { status: 403 }
-      );
-    }
-
-    // 2. Check if participant is blocked
+    // 1. Check if participant is explicitly blocked
     const isBlocked = await isMemberBlocked(roomId, userId);
     if (isBlocked) {
       return NextResponse.json(
@@ -59,17 +51,8 @@ export async function POST(
       );
     }
 
-    // 3. Cryptographic Verification of Invitation Code (host bypasses code check)
+    // Direct room entry allowed for all authenticated users
     const isHost = room.hostId === userId;
-    if (!isHost) {
-      const isValidCode = validateRoomInviteCode(room, inviteCode);
-      if (!isValidCode) {
-        return NextResponse.json(
-          { error: 'Invalid or expired invitation code. Please request a new code from the host.' },
-          { status: 400 }
-        );
-      }
-    }
 
     // 4. Strict Room Capacity (maximum 5 participants)
     const currentMembers = await getMembers(roomId);

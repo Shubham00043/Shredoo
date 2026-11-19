@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
 import { loungeClerkTheme } from '@/lib/clerk-theme';
-import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -53,7 +52,6 @@ export default function RootLayout({
           appearance={loungeClerkTheme as any}
         >
           {children}
-          <PWAInstallBanner />
         </ClerkProvider>
       </body>
     </html>

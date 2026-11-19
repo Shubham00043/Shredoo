@@ -8,6 +8,7 @@ import {
   getPlaylist,
   deleteRoom,
   getMember,
+  addMember,
   sanitizeRoomForPublic,
 } from '@/lib/firestore';
 import { deleteLiveKitRoom } from '@/lib/livekit';
@@ -25,14 +26,27 @@ export async function GET(
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    const members = await getMembers(roomId);
-    const playlist = await getPlaylist(roomId);
-
     const callerUserId = user?.userId || '';
-    const currentMember = await getMember(roomId, callerUserId);
+    let currentMember = await getMember(roomId, callerUserId);
     const isOwner = room.hostId === callerUserId || currentMember?.role === 'owner';
     const isModerator = currentMember?.role === 'moderator';
     const isBlocked = await isMemberBlocked(roomId, callerUserId);
+
+    // Auto-enroll non-blocked visitors directly into the room
+    if (!currentMember && callerUserId && !isBlocked) {
+      currentMember = await addMember({
+        roomId,
+        userId: callerUserId,
+        username: user?.username || 'Lounge Guest',
+        userAvatar: user?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${callerUserId}`,
+        role: isOwner ? 'owner' : 'member',
+        joinedAt: new Date().toISOString(),
+        status: 'connected',
+      });
+    }
+
+    const members = await getMembers(roomId);
+    const playlist = await getPlaylist(roomId);
 
     let blockedMembersList = undefined;
     if (isOwner || isModerator) {
@@ -45,8 +59,8 @@ export async function GET(
       room: responseRoom,
       members,
       playlist,
-      currentUserRole: currentMember?.role || (isOwner ? 'owner' : null),
-      isCurrentUserMember: !!currentMember || isOwner,
+      currentUserRole: currentMember?.role || (isOwner ? 'owner' : 'member'),
+      isCurrentUserMember: isOwner || !!currentMember || !isBlocked,
       isCurrentUserBlocked: isBlocked,
       blockedMembers: blockedMembersList,
     });
