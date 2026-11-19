@@ -1,7 +1,18 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, useRef, use } from 'react';
 import { useUser } from '@clerk/nextjs';
+import {
+  Room as LiveKitRoom,
+  RoomEvent,
+  Track,
+  RemoteTrack,
+  RemoteTrackPublication,
+  RemoteParticipant,
+  Participant,
+  ConnectionState,
+} from 'livekit-client';
+import { webAudioEngine } from '@/lib/audio/webAudioManager';
 import { Room, RoomMember, BlockedMember, Song, RoomRole, MusicTrack } from '@/types';
 import { Navbar } from '@/components/Navbar';
 import { RoomHeader } from '@/components/room/RoomHeader';
@@ -81,6 +92,167 @@ export default function RoomPage({ params }: RoomPageProps) {
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+
+  // LiveKit WebRTC Voice Chat Refs
+  const livekitRoomRef = useRef<LiveKitRoom | null>(null);
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // Real-time WebRTC Voice Chat Connection Engine
+  useEffect(() => {
+    if (!isCurrentUserMember || isCurrentUserBlocked || loading || !room) return;
+    if (typeof window === 'undefined') return;
+
+    let isCancelled = false;
+    let roomInstance: LiveKitRoom | null = null;
+
+    const connectLiveKit = async () => {
+      try {
+        setVoiceConnectionStatus('reconnecting');
+
+        const tokenRes = await fetch('/api/livekit/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-shredoo-user-id': currentUserId,
+          },
+          body: JSON.stringify({
+            roomId,
+            userId: currentUserId,
+            username: currentUserName,
+          }),
+        });
+
+        if (!tokenRes.ok) {
+          throw new Error('Failed to retrieve voice token');
+        }
+
+        const { token, url } = await tokenRes.json();
+        if (isCancelled) return;
+
+        roomInstance = new LiveKitRoom({
+          adaptiveStream: true,
+          dynacast: true,
+          audioCaptureDefaults: {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+        livekitRoomRef.current = roomInstance;
+
+        // Remote track subscribed: attach and play peer voice audio
+        roomInstance.on(
+          RoomEvent.TrackSubscribed,
+          (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+            if (track.kind === Track.Kind.Audio) {
+              const el = track.attach();
+              el.id = `livekit-audio-${participant.identity}`;
+              el.autoplay = true;
+              document.body.appendChild(el);
+              audioElementsRef.current.set(participant.identity, el);
+
+              // Connect to Web Audio API individual GainNode for participant volume control
+              if (track.mediaStream) {
+                webAudioEngine.attachParticipantAudioStream(participant.identity, track.mediaStream);
+              }
+
+              // Apply existing participant volume if persisted
+              const userVol = webAudioEngine.getParticipantVolume(participant.identity);
+              el.volume = isDeafened ? 0 : Math.min(1, userVol / 100);
+            }
+          }
+        );
+
+        // Remote track unsubscribed: cleanup
+        roomInstance.on(
+          RoomEvent.TrackUnsubscribed,
+          (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+            track.detach().forEach((el) => el.remove());
+            audioElementsRef.current.delete(participant.identity);
+            webAudioEngine.removeParticipant(participant.identity);
+          }
+        );
+
+        // Speaking indicator detection
+        roomInstance.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+          const speakingSet = new Set(speakers.map((s) => s.identity));
+          setMembers((prev) =>
+            prev.map((m) => ({
+              ...m,
+              isSpeaking: speakingSet.has(m.userId),
+            }))
+          );
+        });
+
+        // Connection state updates
+        roomInstance.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
+          if (state === ConnectionState.Connected) {
+            setVoiceConnectionStatus('connected');
+          } else if (state === ConnectionState.Reconnecting) {
+            setVoiceConnectionStatus('reconnecting');
+          } else {
+            setVoiceConnectionStatus('disconnected');
+          }
+        });
+
+        await roomInstance.connect(url, token);
+        if (isCancelled) {
+          roomInstance.disconnect();
+          return;
+        }
+
+        setVoiceConnectionStatus('connected');
+
+        // Enable microphone if not muted
+        try {
+          await roomInstance.localParticipant.setMicrophoneEnabled(!isMicMuted);
+        } catch (micErr) {
+          console.warn('Microphone permission deferred or denied:', micErr);
+        }
+      } catch (err: any) {
+        console.error('LiveKit connection error:', err);
+        setVoiceConnectionStatus('disconnected');
+      }
+    };
+
+    connectLiveKit();
+
+    return () => {
+      isCancelled = true;
+      if (roomInstance) {
+        roomInstance.disconnect();
+      }
+      audioElementsRef.current.forEach((el) => el.remove());
+      audioElementsRef.current.clear();
+      livekitRoomRef.current = null;
+    };
+  }, [roomId, currentUserId, isCurrentUserMember, isCurrentUserBlocked, loading]);
+
+  const handleToggleMic = async () => {
+    const nextMuted = !isMicMuted;
+    setIsMicMuted(nextMuted);
+    if (livekitRoomRef.current) {
+      try {
+        await livekitRoomRef.current.localParticipant.setMicrophoneEnabled(!nextMuted);
+      } catch (err) {
+        console.warn('Failed to toggle mic:', err);
+      }
+    }
+  };
+
+  const handleToggleDeafened = () => {
+    const nextDeafened = !isDeafened;
+    setIsDeafened(nextDeafened);
+    audioElementsRef.current.forEach((el, pId) => {
+      if (nextDeafened) {
+        el.muted = true;
+      } else {
+        el.muted = false;
+        const vol = webAudioEngine.getParticipantVolume(pId);
+        el.volume = Math.min(1, vol / 100);
+      }
+    });
+  };
 
   // Auto-fill invite code from URL query parameter if present
   useEffect(() => {
@@ -386,6 +558,16 @@ export default function RoomPage({ params }: RoomPageProps) {
                 onOpenProfile={(m) => setProfileMember(m)}
                 onKickMember={() => setIsManagementOpen(true)}
                 onBlockMember={() => setIsManagementOpen(true)}
+                onAdjustVolume={(m) => {
+                  const currentVol = webAudioEngine.getParticipantVolume(m.userId);
+                  const newVol = prompt(`Set voice volume for ${m.username} (0-200%):`, currentVol.toString());
+                  if (newVol !== null && !isNaN(parseInt(newVol, 10))) {
+                    const parsed = parseInt(newVol, 10);
+                    webAudioEngine.setParticipantVolume(m.userId, parsed);
+                    const el = audioElementsRef.current.get(m.userId);
+                    if (el) el.volume = Math.min(1, parsed / 100);
+                  }
+                }}
               />
             </div>
 
@@ -409,9 +591,9 @@ export default function RoomPage({ params }: RoomPageProps) {
               musicVolume={musicVolume}
               onMusicVolumeChange={setMusicVolume}
               isMicMuted={isMicMuted}
-              onToggleMic={() => setIsMicMuted(!isMicMuted)}
+              onToggleMic={handleToggleMic}
               isDeafened={isDeafened}
-              onToggleDeafened={() => setIsDeafened(!isDeafened)}
+              onToggleDeafened={handleToggleDeafened}
             />
 
             {/* Live Audio Diagnostics & Troubleshooting Panel */}

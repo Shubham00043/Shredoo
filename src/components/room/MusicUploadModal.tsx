@@ -184,62 +184,83 @@ export function MusicUploadModal({
       )
     );
 
-    // Upload items sequentially or in parallel batches
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB slices (well below Vercel's 4.5MB limit)
+
+    // Upload items sequentially with chunking
     for (let i = 0; i < fileList.length; i++) {
       const item = fileList[i];
       if (item.status === 'success') continue;
 
+      const file = item.file;
+      const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+      const uploadId = `upl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       try {
-        setFileList((prev) =>
-          prev.map((it) => (it.id === item.id ? { ...it, status: 'uploading', progress: 40 } : it))
-        );
+        let lastResultTrack: RoomMusicRecord | undefined = undefined;
+        let uploadFailed = false;
+        let uploadErrorMsg = '';
 
-        const formData = new FormData();
-        formData.append('files', item.file);
-        formData.append('autoQueue', autoQueue ? 'true' : 'false');
+        for (let cIdx = 0; cIdx < totalChunks; cIdx++) {
+          if (abortControllerRef.current?.signal.aborted) break;
 
-        const res = await fetch(`/api/rooms/${roomId}/music/upload`, {
-          method: 'POST',
-          headers: {
-            'x-shredoo-user-id': currentUserId,
-          },
-          body: formData,
-          signal: abortControllerRef.current.signal,
-        });
+          const start = cIdx * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunkBlob = file.slice(start, end);
 
-        const data = await res.json();
+          const pct = Math.round(((cIdx + 1) / totalChunks) * 95);
+          setFileList((prev) =>
+            prev.map((it) => (it.id === item.id ? { ...it, status: 'uploading', progress: pct } : it))
+          );
 
-        if (res.ok && data.results && data.results.length > 0) {
-          const resItem = data.results[0];
-          if (resItem.success && resItem.track) {
-            succeededTracks.push(resItem.track);
-            setFileList((prev) =>
-              prev.map((it) =>
-                it.id === item.id
-                  ? {
-                      ...it,
-                      status: 'success',
-                      progress: 100,
-                      resultTrack: resItem.track,
-                    }
-                  : it
-              )
-            );
-          } else {
-            setFileList((prev) =>
-              prev.map((it) =>
-                it.id === item.id
-                  ? {
-                      ...it,
-                      status: 'error',
-                      progress: 0,
-                      error: resItem.error || 'Upload rejected',
-                    }
-                  : it
-              )
-            );
+          const formData = new FormData();
+          formData.append('chunk', chunkBlob);
+          formData.append('uploadId', uploadId);
+          formData.append('chunkIndex', cIdx.toString());
+          formData.append('totalChunks', totalChunks.toString());
+          formData.append('filename', file.name);
+          formData.append('fileSize', file.size.toString());
+          formData.append('autoQueue', autoQueue ? 'true' : 'false');
+
+          const res = await fetch(`/api/rooms/${roomId}/music/upload`, {
+            method: 'POST',
+            headers: {
+              'x-shredoo-user-id': currentUserId,
+            },
+            body: formData,
+            signal: abortControllerRef.current?.signal,
+          });
+
+          const resText = await res.text();
+          let data: any;
+          try {
+            data = JSON.parse(resText);
+          } catch {
+            data = {
+              error:
+                resText.length > 100
+                  ? `Upload rejected (HTTP ${res.status}): ${resText.slice(0, 100)}`
+                  : resText || `HTTP ${res.status} error`,
+            };
           }
-        } else {
+
+          if (!res.ok) {
+            uploadFailed = true;
+            uploadErrorMsg = data.error || `Upload failed with HTTP ${res.status}`;
+            break;
+          }
+
+          if (cIdx === totalChunks - 1 && data.results && data.results.length > 0) {
+            const resItem = data.results[0];
+            if (resItem.success && resItem.track) {
+              lastResultTrack = resItem.track;
+            } else {
+              uploadFailed = true;
+              uploadErrorMsg = resItem.error || 'Track processing failed';
+            }
+          }
+        }
+
+        if (uploadFailed || !lastResultTrack) {
           setFileList((prev) =>
             prev.map((it) =>
               it.id === item.id
@@ -247,7 +268,21 @@ export function MusicUploadModal({
                     ...it,
                     status: 'error',
                     progress: 0,
-                    error: data.error || 'Server error',
+                    error: uploadErrorMsg || 'Upload failed',
+                  }
+                : it
+            )
+          );
+        } else {
+          succeededTracks.push(lastResultTrack);
+          setFileList((prev) =>
+            prev.map((it) =>
+              it.id === item.id
+                ? {
+                    ...it,
+                    status: 'success',
+                    progress: 100,
+                    resultTrack: lastResultTrack,
                   }
                 : it
             )
@@ -264,7 +299,7 @@ export function MusicUploadModal({
                   ...it,
                   status: 'error',
                   progress: 0,
-                  error: err.message || 'Connection failed',
+                  error: err.message || 'Network error',
                 }
               : it
           )

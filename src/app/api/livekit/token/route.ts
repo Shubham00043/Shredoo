@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
-import { getRoom, isMemberBlocked, getMember } from '@/lib/firestore';
+import { getRoom, isMemberBlocked, getMember, addMember } from '@/lib/firestore';
 import { createLiveKitToken } from '@/lib/livekit';
 
 export async function POST(req: NextRequest) {
@@ -30,20 +30,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check membership
-    const member = await getMember(roomId, userId);
+    // Check membership (auto-enroll non-blocked listeners)
+    let member = await getMember(roomId, userId);
     if (!member && room.hostId !== userId) {
-      return NextResponse.json(
-        { error: 'You must join the room before getting a voice token.' },
-        { status: 403 }
-      );
+      member = await addMember({
+        roomId,
+        userId,
+        username,
+        userAvatar: user?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${userId}`,
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+        status: 'connected',
+      });
     }
 
     const token = await createLiveKitToken(roomId, userId, username);
 
     return NextResponse.json({
       token,
-      url: process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || 'wss://shredoo-demo.livekit.cloud',
+      url: process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || 'wss://shredoo-pl740hyo.livekit.cloud',
     });
   } catch (err: any) {
     console.error('Error in /api/livekit/token:', err);

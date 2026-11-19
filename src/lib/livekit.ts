@@ -1,8 +1,9 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'devkey';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'secret';
-const LIVEKIT_URL = process.env.LIVEKIT_URL || 'wss://shredoo-demo.livekit.cloud';
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'API8tcooy7YduF6';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'UEHKrg4JOCI030eVqkPRrPIWByNWQMZhOSWnuxMjZeA';
+const LIVEKIT_URL =
+  process.env.LIVEKIT_URL || process.env.NEXT_PUBLIC_LIVEKIT_URL || 'wss://shredoo-pl740hyo.livekit.cloud';
 
 // Initialize LiveKit RoomServiceClient
 let roomServiceClient: RoomServiceClient | null = null;

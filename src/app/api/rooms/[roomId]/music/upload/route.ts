@@ -73,6 +73,162 @@ export async function POST(
     }
 
     const formData = await req.formData();
+
+    // Check if this is a chunked slice upload (for large files to bypass Vercel's 4.5MB limit)
+    const chunkBlob = (formData.get('chunk') || formData.get('slice')) as Blob | null;
+    if (chunkBlob) {
+      const uploadId = (formData.get('uploadId') as string) || `upl-${Date.now()}`;
+      const chunkIndex = parseInt(formData.get('chunkIndex') as string, 10);
+      const totalChunks = parseInt(formData.get('totalChunks') as string, 10);
+      const filename = (formData.get('filename') as string) || 'audio.mp3';
+      const autoQueue = formData.get('autoQueue') === 'true';
+      const customTitle = formData.get('title') as string | null;
+      const customArtist = formData.get('artist') as string | null;
+
+      const ext = path.extname(filename).toLowerCase() || '.mp3';
+      if (!UPLOAD_CONFIG.ALLOWED_EXTENSIONS.includes(ext)) {
+        return NextResponse.json(
+          { error: `Unsupported format (${ext}). Supported formats: MP3, WAV, OGG, M4A.` },
+          { status: 400 }
+        );
+      }
+
+      const chunkDir = path.join(os.tmpdir(), 'shredoo_chunks', uploadId);
+      if (!fs.existsSync(chunkDir)) {
+        fs.mkdirSync(chunkDir, { recursive: true });
+      }
+
+      const chunkBytes = await chunkBlob.arrayBuffer();
+      fs.writeFileSync(path.join(chunkDir, `chunk_${chunkIndex}`), Buffer.from(chunkBytes));
+
+      // If not the final chunk yet, acknowledge receipt
+      if (chunkIndex < totalChunks - 1) {
+        return NextResponse.json({
+          success: true,
+          chunkIndex,
+          totalChunks,
+          isComplete: false,
+        });
+      }
+
+      // Final chunk arrived: assemble chunks into complete audio file
+      const chunkBuffers: Buffer[] = [];
+      for (let i = 0; i < totalChunks; i++) {
+        const cPath = path.join(chunkDir, `chunk_${i}`);
+        if (!fs.existsSync(cPath)) {
+          return NextResponse.json(
+            { error: `Missing chunk ${i} of ${totalChunks}. Please retry upload.` },
+            { status: 400 }
+          );
+        }
+        chunkBuffers.push(fs.readFileSync(cPath));
+      }
+      const fullBuffer = Buffer.concat(chunkBuffers);
+
+      // Clean up chunk temporary directory
+      try {
+        fs.rmSync(chunkDir, { recursive: true, force: true });
+      } catch (e) {}
+
+      // Validate total size
+      if (fullBuffer.length > UPLOAD_CONFIG.MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          { error: `File size exceeds 50MB limit (${(fullBuffer.length / (1024 * 1024)).toFixed(1)}MB).` },
+          { status: 400 }
+        );
+      }
+
+      const baseNameWithoutExt = path.basename(filename, ext).replace(/[_-]/g, ' ').trim();
+      let trackTitle = customTitle || baseNameWithoutExt || 'Untitled Track';
+      let trackArtist = customArtist || user.username || 'Community Artist';
+
+      if (!customTitle && baseNameWithoutExt.includes(' - ')) {
+        const parts = baseNameWithoutExt.split(' - ');
+        trackArtist = parts[0].trim();
+        trackTitle = parts.slice(1).join(' - ').trim();
+      }
+
+      await checkDuplicateTrack(roomId, trackTitle, trackArtist, fullBuffer.length);
+
+      const trackId = `track-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const safeFilename = `audio${ext}`;
+
+      const baseStorage = getRoomStorageBaseDir();
+      const trackStorageDir = path.join(baseStorage, 'rooms', roomId, 'music', trackId, 'audio');
+      const relativeStoragePath = `rooms/${roomId}/music/${trackId}/audio/${safeFilename}`;
+
+      if (!fs.existsSync(trackStorageDir)) {
+        fs.mkdirSync(trackStorageDir, { recursive: true });
+      }
+
+      const filePath = path.join(trackStorageDir, safeFilename);
+      fs.writeFileSync(filePath, fullBuffer);
+
+      const sourceUrl = `/api/rooms/${roomId}/music/stream/${trackId}`;
+
+      const musicRecord: RoomMusicRecord = {
+        trackId,
+        roomId,
+        title: trackTitle,
+        artist: trackArtist,
+        album: 'Room Uploads',
+        duration: 210,
+        storagePath: relativeStoragePath,
+        uploadedBy: user.userId,
+        uploadedByUsername: user.username,
+        createdAt: new Date().toISOString(),
+        licenseType: 'User-Authorized Personal Audio',
+        playbackStatus: 'available',
+        fileSize: fullBuffer.length,
+        mimeType: `audio/${ext.replace('.', '')}`,
+        sourceUrl,
+        artworkUrl:
+          'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+      };
+
+      await addTrackToRoomMusic(roomId, musicRecord);
+
+      if (autoQueue) {
+        const queueItem: MusicTrack = {
+          trackId: musicRecord.trackId,
+          providerId: 'user_upload',
+          category: 'independent',
+          title: musicRecord.title,
+          artist: musicRecord.artist,
+          album: musicRecord.album,
+          artworkUrl: musicRecord.artworkUrl!,
+          duration: musicRecord.duration,
+          playbackAvailability: 'full_playback',
+          licenseType: musicRecord.licenseType,
+          territory: 'Worldwide',
+          attribution: `Uploaded by ${user.username}`,
+          sourceUrl: musicRecord.sourceUrl,
+          storagePath: musicRecord.storagePath,
+          addedBy: user.userId,
+          addedByName: user.username,
+          addedAt: new Date().toISOString(),
+          uploadedBy: user.userId,
+          uploadedByUsername: user.username,
+        };
+        await addToPlaylist(roomId, queueItem);
+      }
+
+      return NextResponse.json({
+        success: true,
+        isComplete: true,
+        totalCount: 1,
+        successCount: 1,
+        failedCount: 0,
+        results: [
+          {
+            filename,
+            success: true,
+            track: musicRecord,
+          },
+        ],
+      });
+    }
+
     const rawFiles = formData.getAll('files') as File[];
     const singleFile = formData.get('file') as File;
     const autoQueue = formData.get('autoQueue') === 'true';
