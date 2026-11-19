@@ -96,11 +96,11 @@ export function hashRoomCode(code: string): string {
   return crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
 }
 
-// Cryptographically secure room code generator (e.g. SHR8K92P, SH7D92XQ, SHR4M8T2)
-export function generateCryptoRoomCode(): string {
+// Cryptographically secure room code generator (e.g. SH7D92, SH8K92, SH4M8T)
+export function generateCryptoRoomCode(length: number = 6): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const prefix = Math.random() > 0.5 ? 'SHR' : 'SH';
-  const randomLen = 8 - prefix.length;
+  const prefix = 'SH';
+  const randomLen = Math.max(3, length - prefix.length);
   const randomBytes = crypto.randomBytes(randomLen);
   let code = prefix;
   for (let i = 0; i < randomLen; i++) {
@@ -788,6 +788,43 @@ export function validateRoomInviteCode(room: Room, inputCode: string): boolean {
   }
 
   return false;
+}
+
+/**
+ * Searches and finds an active room by its invite code (supporting any 6 to 10 character code)
+ */
+export async function findRoomByCode(code: string): Promise<Room | null> {
+  if (!code) return null;
+  const cleanInput = code.trim().toUpperCase();
+  const inputHash = hashRoomCode(cleanInput);
+  const store = getStore();
+
+  // 1. Active entry check in roomCodes collection
+  const entry = store.roomCodes[inputHash];
+  if (entry && entry.active && store.rooms[entry.roomId]) {
+    const room = store.rooms[entry.roomId];
+    if (!room.isClosed) return room;
+  }
+
+  // 2. Scan all rooms by direct inviteCode or inviteCodeHash
+  for (const r of Object.values(store.rooms)) {
+    if (
+      (r.inviteCode && r.inviteCode.toUpperCase() === cleanInput) ||
+      (r.inviteCodeHash && r.inviteCodeHash === inputHash)
+    ) {
+      if (!r.isClosed) return r;
+    }
+  }
+
+  // 3. Fallback scan roomCodes collection in case active flag needs tolerance
+  for (const rc of Object.values(store.roomCodes)) {
+    if (rc.code && rc.code.toUpperCase() === cleanInput && store.rooms[rc.roomId]) {
+      const room = store.rooms[rc.roomId];
+      if (!room.isClosed) return room;
+    }
+  }
+
+  return null;
 }
 
 /**

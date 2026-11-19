@@ -34,6 +34,8 @@ import {
   Key,
   Mic,
   Headphones,
+  Disc3,
+  Sliders,
 } from 'lucide-react';
 
 interface RoomPageProps {
@@ -92,6 +94,38 @@ export default function RoomPage({ params }: RoomPageProps) {
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+
+  // Mobile active tab view: 'all' | 'voice' | 'music' | 'mixer'
+  const [activeMobileTab, setActiveMobileTab] = useState<'all' | 'voice' | 'music' | 'mixer'>('all');
+
+  // Auto-fill invite code from URL parameters on client mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlCode = params.get('code');
+      if (urlCode) {
+        setJoinCodeInput(urlCode.toUpperCase());
+      }
+    }
+  }, []);
+
+  // Screen Wake Lock on mobile devices during active listening session
+  useEffect(() => {
+    let wakeLock: any = null;
+    if (typeof window !== 'undefined' && 'wakeLock' in navigator && isCurrentUserMember) {
+      (navigator as any).wakeLock
+        .request('screen')
+        .then((lock: any) => {
+          wakeLock = lock;
+        })
+        .catch(() => {});
+    }
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [isCurrentUserMember]);
 
   // LiveKit WebRTC Voice Chat Refs
   const livekitRoomRef = useRef<LiveKitRoom | null>(null);
@@ -229,6 +263,9 @@ export default function RoomPage({ params }: RoomPageProps) {
   }, [roomId, currentUserId, isCurrentUserMember, isCurrentUserBlocked, loading]);
 
   const handleToggleMic = async () => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(15);
+    }
     const nextMuted = !isMicMuted;
     setIsMicMuted(nextMuted);
     if (livekitRoomRef.current) {
@@ -241,6 +278,9 @@ export default function RoomPage({ params }: RoomPageProps) {
   };
 
   const handleToggleDeafened = () => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(15);
+    }
     const nextDeafened = !isDeafened;
     setIsDeafened(nextDeafened);
     audioElementsRef.current.forEach((el, pId) => {
@@ -333,8 +373,11 @@ export default function RoomPage({ params }: RoomPageProps) {
   };
 
   // Join Room with Code
-  const handleJoinWithCode = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleJoinWithCode = async (e?: React.FormEvent, codeToUse?: string) => {
+    if (e) e.preventDefault();
+    const code = (codeToUse || joinCodeInput).trim().toUpperCase();
+    if (!code) return;
+
     setJoining(true);
     setJoinError(null);
 
@@ -348,7 +391,7 @@ export default function RoomPage({ params }: RoomPageProps) {
         body: JSON.stringify({
           userId: currentUserId,
           username: currentUserName,
-          inviteCode: joinCodeInput.trim(),
+          inviteCode: code,
         }),
       });
 
@@ -364,6 +407,22 @@ export default function RoomPage({ params }: RoomPageProps) {
       setJoining(false);
     }
   };
+
+  // Auto-attempt join if invite code is present in URL
+  useEffect(() => {
+    if (
+      !loading &&
+      !isCurrentUserMember &&
+      !isCurrentUserBlocked &&
+      joinCodeInput &&
+      !joining &&
+      room &&
+      !room.isClosed &&
+      room.hostId !== currentUserId
+    ) {
+      handleJoinWithCode(undefined, joinCodeInput);
+    }
+  }, [loading, isCurrentUserMember, isCurrentUserBlocked, joinCodeInput, room?.isClosed, room?.hostId]);
 
   const isHost = currentUserRole === 'owner' || room?.hostId === currentUserId;
 
@@ -477,7 +536,7 @@ export default function RoomPage({ params }: RoomPageProps) {
                       required
                       value={joinCodeInput}
                       onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-                      placeholder="e.g. SHRED1"
+                      placeholder="e.g. SHRDD2RQ or SH7M9P"
                       className="flex-1 px-3.5 py-2.5 rounded-xl bg-lounge-card border border-lounge-border text-white text-sm font-mono tracking-wider focus:outline-none focus:border-amber-500 transition"
                     />
                   </div>
@@ -530,12 +589,71 @@ export default function RoomPage({ params }: RoomPageProps) {
           onSwitchUser={handleSwitchUser}
         />
 
+        {/* Mobile Navigation Tabs (Voice / Music / Mixer / All) */}
+        <div className="lg:hidden flex items-center justify-between p-1 bg-lounge-surface border border-lounge-border rounded-2xl shadow-sm text-xs">
+          <button
+            onClick={() => {
+              setActiveMobileTab('all');
+              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10);
+            }}
+            className={`flex-1 py-2 px-1 rounded-xl font-bold transition flex items-center justify-center gap-1 ${
+              activeMobileTab === 'all'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40'
+                : 'text-lounge-textMuted hover:text-white'
+            }`}
+          >
+            <span>All Views</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveMobileTab('voice');
+              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10);
+            }}
+            className={`flex-1 py-2 px-1 rounded-xl font-bold transition flex items-center justify-center gap-1 ${
+              activeMobileTab === 'voice'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40'
+                : 'text-lounge-textMuted hover:text-white'
+            }`}
+          >
+            <Mic size={13} />
+            <span>Voice ({members.length})</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveMobileTab('music');
+              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10);
+            }}
+            className={`flex-1 py-2 px-1 rounded-xl font-bold transition flex items-center justify-center gap-1 ${
+              activeMobileTab === 'music'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40'
+                : 'text-lounge-textMuted hover:text-white'
+            }`}
+          >
+            <Disc3 size={13} />
+            <span>Music</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveMobileTab('mixer');
+              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10);
+            }}
+            className={`flex-1 py-2 px-1 rounded-xl font-bold transition flex items-center justify-center gap-1 ${
+              activeMobileTab === 'mixer'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40'
+                : 'text-lounge-textMuted hover:text-white'
+            }`}
+          >
+            <Sliders size={13} />
+            <span>Mixer</span>
+          </button>
+        </div>
+
         {/* 2-Column Responsive Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Left Section: Live Voice Cards + Synced Music Player */}
           <div className="lg:col-span-2 space-y-6">
             {/* Live Voice Participant Cards Grid */}
-            <div className="space-y-2">
+            <div className={`space-y-2 ${activeMobileTab === 'all' || activeMobileTab === 'voice' ? 'block' : 'hidden lg:block'}`}>
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-lounge-textMuted flex items-center gap-1.5">
                   <Volume2 size={14} className="text-amber-500" /> Live Voice Channels ({members.length}/{room.maxCapacity})
@@ -572,18 +690,20 @@ export default function RoomPage({ params }: RoomPageProps) {
             </div>
 
             {/* Synced Music Player & Queue (Dual Providers: Jamendo CC + Bollywood B2B Preview) */}
-            <MusicPlayer
-              room={room}
-              playlist={playlist}
-              isHostOrMod={isHost || currentUserRole === 'moderator'}
-              currentUserId={currentUserId}
-              musicVolume={musicVolume}
-              onRefreshRoom={fetchRoomData}
-            />
+            <div className={`${activeMobileTab === 'all' || activeMobileTab === 'music' ? 'block' : 'hidden lg:block'}`}>
+              <MusicPlayer
+                room={room}
+                playlist={playlist}
+                isHostOrMod={isHost || currentUserRole === 'moderator'}
+                currentUserId={currentUserId}
+                musicVolume={musicVolume}
+                onRefreshRoom={fetchRoomData}
+              />
+            </div>
           </div>
 
           {/* Right Section: Individual Audio Mixer + Audio Diagnostics */}
-          <div className="space-y-6">
+          <div className={`space-y-6 ${activeMobileTab === 'all' || activeMobileTab === 'mixer' ? 'block' : 'hidden lg:block'}`}>
             {/* Audio Mixer (Only 2 volume types: Background Music and Individual Voice gains) */}
             <AudioMixer
               members={members}

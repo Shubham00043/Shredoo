@@ -18,6 +18,7 @@ import {
   Sliders,
   Settings,
   Lock,
+  Loader2,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -27,6 +28,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [codeQuery, setCodeQuery] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [isLookingUpCode, setIsLookingUpCode] = useState(false);
 
   const currentUserId = user?.id || 'user_host_1';
   const currentUserName = user?.fullName || user?.username || 'Alex Shredder';
@@ -67,18 +69,36 @@ export default function DashboardPage() {
     }
   }, [isLoaded, isSignedIn, user?.id]);
 
-  const handleJoinByCode = (e: React.FormEvent) => {
+  const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = codeQuery.trim().toUpperCase();
     if (!clean) return;
 
-    // Check if code matches any known room or route to join
-    const found = [...ownedRooms, ...joinedRooms].find((r) => r.inviteCode.toUpperCase() === clean);
-    if (found) {
-      window.location.href = `/room/${found.id}?code=${clean}`;
-    } else {
-      // Direct jump to room code lookup
-      window.location.href = `/room/room-101?code=${clean}`;
+    // Check if code matches any known room locally first
+    const foundLocal = [...ownedRooms, ...joinedRooms].find(
+      (r) => r.inviteCode && r.inviteCode.toUpperCase() === clean
+    );
+    if (foundLocal) {
+      window.location.href = `/room/${foundLocal.id}?code=${clean}`;
+      return;
+    }
+
+    // Call room lookup API
+    setIsLookingUpCode(true);
+    setCodeError(null);
+    try {
+      const res = await fetch(`/api/rooms/lookup?code=${encodeURIComponent(clean)}`);
+      const data = await res.json();
+      if (!res.ok || !data.found) {
+        setCodeError(data.error || `No listening room found for code "${clean}". Please verify with the host.`);
+        return;
+      }
+
+      window.location.href = `/room/${data.roomId}?code=${clean}`;
+    } catch (err: any) {
+      setCodeError(err.message || 'Error looking up room code. Please try again.');
+    } finally {
+      setIsLookingUpCode(false);
     }
   };
 
@@ -127,28 +147,37 @@ export default function DashboardPage() {
               <Key size={15} className="text-amber-500" /> Have an Invitation Code?
             </h3>
             <p className="text-xs text-lounge-textMuted mt-0.5">
-              Enter a 6-character private invite code to access an authorized room.
+              Enter private invite code to access an authorized room.
             </p>
           </div>
 
-          <form onSubmit={handleJoinByCode} className="flex items-center gap-2 w-full md:w-auto">
-            <input
-              type="text"
-              value={codeQuery}
-              onChange={(e) => {
-                setCodeQuery(e.target.value);
-                setCodeError(null);
-              }}
-              placeholder="e.g. SHRED1"
-              className="px-3.5 py-2 rounded-xl bg-lounge-bg border border-lounge-border text-white text-xs font-mono uppercase tracking-wider focus:outline-none focus:border-amber-500 w-full sm:w-44"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-xl bg-lounge-card hover:bg-lounge-cardHover border border-lounge-border text-xs font-semibold text-white transition flex-shrink-0"
-            >
-              Join Room
-            </button>
-          </form>
+          <div className="w-full md:w-auto">
+            <form onSubmit={handleJoinByCode} className="flex items-center gap-2 w-full md:w-auto">
+              <input
+                type="text"
+                value={codeQuery}
+                onChange={(e) => {
+                  setCodeQuery(e.target.value.toUpperCase());
+                  setCodeError(null);
+                }}
+                placeholder="e.g. SHREDD2 or SH7M9P"
+                className="px-3.5 py-2 rounded-xl bg-lounge-bg border border-lounge-border text-white text-xs font-mono uppercase tracking-wider focus:outline-none focus:border-amber-500 w-full sm:w-52"
+              />
+              <button
+                type="submit"
+                disabled={isLookingUpCode || !codeQuery.trim()}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-xs font-semibold text-white transition flex-shrink-0 flex items-center gap-1.5 shadow-md shadow-amber-950/30"
+              >
+                {isLookingUpCode ? <Loader2 size={13} className="animate-spin" /> : null}
+                <span>Join Room</span>
+              </button>
+            </form>
+            {codeError && (
+              <p className="text-xs text-rose-400 mt-2 font-medium bg-rose-950/40 border border-rose-900/60 px-3 py-1.5 rounded-lg">
+                {codeError}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Section 1: My Listening Rooms (Owned by user) */}

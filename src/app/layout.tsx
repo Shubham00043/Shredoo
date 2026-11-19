@@ -1,12 +1,36 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
 import { loungeClerkTheme } from '@/lib/clerk-theme';
+import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import './globals.css';
+
+export const viewport: Viewport = {
+  themeColor: '#0c0e12',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: 'SHREDoo – Private Collaborative Listening Lounge',
   description:
-    'A modern private music-listening lounge with real-time LiveKit voice chat, independent music and voice mixers, and curated catalogues.',
+    'A modern private music-listening lounge with real-time LiveKit voice chat, independent music and voice mixers, and shared playlist uploads.',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'SHREDoo',
+  },
 };
 
 const CLERK_PUBLISHABLE_KEY =
@@ -29,6 +53,7 @@ export default function RootLayout({
           appearance={loungeClerkTheme as any}
         >
           {children}
+          <PWAInstallBanner />
         </ClerkProvider>
       </body>
     </html>
