@@ -1,7 +1,54 @@
-import { Suspense } from 'react';
-import { SignUp } from '@clerk/nextjs';
+'use client';
+
+import React, { useEffect, Suspense } from 'react';
+import { SignUp, useUser } from '@clerk/nextjs';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Radio, Loader2 } from 'lucide-react';
+import { Radio, Loader2, ArrowRight } from 'lucide-react';
+
+function SignUpContent() {
+  const { isLoaded, isSignedIn, user } = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get('redirect_url') || '/';
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.replace(redirectUrl);
+    }
+  }, [isLoaded, isSignedIn, redirectUrl, router]);
+
+  if (isLoaded && isSignedIn) {
+    return (
+      <div className="p-8 rounded-2xl bg-lounge-surface border border-lounge-border flex flex-col items-center justify-center space-y-4 text-center">
+        <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+          <Loader2 size={24} className="animate-spin text-amber-500" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-white">Already Registered</h2>
+          <p className="text-xs text-lounge-textMuted mt-1">
+            Welcome back, {user?.fullName || user?.username || 'Listener'}! Entering lounge...
+          </p>
+        </div>
+        <Link
+          href={redirectUrl}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition shadow-md shadow-amber-950/40"
+        >
+          Enter Lounge Now <ArrowRight size={14} />
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <SignUp
+      routing="path"
+      path="/sign-up"
+      signInUrl="/sign-in"
+      fallbackRedirectUrl="/"
+    />
+  );
+}
 
 export default function SignUpPage() {
   return (
@@ -29,15 +76,9 @@ export default function SignUpPage() {
             </div>
           }
         >
-          <SignUp
-            routing="path"
-            path="/sign-up"
-            signInUrl="/sign-in"
-            fallbackRedirectUrl="/"
-          />
+          <SignUpContent />
         </Suspense>
       </div>
     </div>
   );
 }
-

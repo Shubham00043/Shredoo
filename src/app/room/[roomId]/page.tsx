@@ -82,6 +82,17 @@ export default function RoomPage({ params }: RoomPageProps) {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
 
+  // Auto-fill invite code from URL query parameter if present
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const code = sp.get('code');
+      if (code) {
+        setJoinCodeInput(code.toUpperCase().trim());
+      }
+    }
+  }, []);
+
   // Fetch and sync room data
   const fetchRoomData = async () => {
     try {

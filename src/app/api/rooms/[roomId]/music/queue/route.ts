@@ -8,6 +8,8 @@ import {
   reorderRoomPlaylist,
   clearRoomPlaylist,
   getMember,
+  addMember,
+  isMemberBlocked,
   getRoomPlayback,
 } from '@/lib/firestore';
 import { MusicTrack } from '@/types';
@@ -29,10 +31,23 @@ export async function GET(
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    const member = await getMember(roomId, user.userId);
+    const isBlocked = await isMemberBlocked(roomId, user.userId);
+    if (isBlocked) {
+      return NextResponse.json({ error: 'Access blocked in this room' }, { status: 403 });
+    }
+
+    let member = await getMember(roomId, user.userId);
     const isHost = room.hostId === user.userId;
     if (!member && !isHost) {
-      return NextResponse.json({ error: 'Must be a member of this room' }, { status: 403 });
+      member = await addMember({
+        roomId,
+        userId: user.userId,
+        username: user.username || 'Shredoo Member',
+        userAvatar: user.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.userId}`,
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+        status: 'connected',
+      });
     }
 
     const playlist = await getPlaylist(roomId);
@@ -70,10 +85,23 @@ export async function POST(
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    const member = await getMember(roomId, user.userId);
+    const isBlocked = await isMemberBlocked(roomId, user.userId);
+    if (isBlocked) {
+      return NextResponse.json({ error: 'Access blocked in this room' }, { status: 403 });
+    }
+
+    let member = await getMember(roomId, user.userId);
     const isHost = room.hostId === user.userId;
     if (!member && !isHost) {
-      return NextResponse.json({ error: 'Must be a member of this room to add songs' }, { status: 403 });
+      member = await addMember({
+        roomId,
+        userId: user.userId,
+        username: user.username || 'Shredoo Member',
+        userAvatar: user.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.userId}`,
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+        status: 'connected',
+      });
     }
 
     if (room.musicPermissions.whoCanAdd === 'host_only') {

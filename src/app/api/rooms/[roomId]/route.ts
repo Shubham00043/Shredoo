@@ -46,7 +46,7 @@ export async function GET(
       members,
       playlist,
       currentUserRole: currentMember?.role || (isOwner ? 'owner' : null),
-      isCurrentUserMember: !!currentMember,
+      isCurrentUserMember: !!currentMember || isOwner,
       isCurrentUserBlocked: isBlocked,
       blockedMembers: blockedMembersList,
     });

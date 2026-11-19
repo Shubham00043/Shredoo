@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getAuthenticatedUser } from '@/lib/auth';
-import { getRoom, getMember, addTrackToRoomMusic, addToPlaylist, checkDuplicateTrack } from '@/lib/firestore';
+import { getRoom, getMember, addMember, isMemberBlocked, addTrackToRoomMusic, addToPlaylist, checkDuplicateTrack } from '@/lib/firestore';
 import { RoomMusicRecord, MusicTrack } from '@/types';
 
 const UPLOAD_CONFIG = {
@@ -53,13 +53,23 @@ export async function POST(
       return NextResponse.json({ error: 'This lounge is closed. Uploads are disabled.' }, { status: 403 });
     }
 
-    const member = await getMember(roomId, user.userId);
+    const isBlocked = await isMemberBlocked(roomId, user.userId);
+    if (isBlocked) {
+      return NextResponse.json({ error: 'Access blocked in this room' }, { status: 403 });
+    }
+
+    let member = await getMember(roomId, user.userId);
     const isHost = room.hostId === user.userId;
     if (!member && !isHost) {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only active room members can upload music to this lounge.' },
-        { status: 403 }
-      );
+      member = await addMember({
+        roomId,
+        userId: user.userId,
+        username: user.username || 'Shredoo Member',
+        userAvatar: user.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.userId}`,
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+        status: 'connected',
+      });
     }
 
     const formData = await req.formData();

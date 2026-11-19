@@ -138,6 +138,5 @@ export const loungeClerkTheme = {
       color: '#f3f4f6 !important',
     },
   },
-  __type: 'prebuilt_appearance',
 };
 

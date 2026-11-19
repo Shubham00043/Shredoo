@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getAuthenticatedUser } from '@/lib/auth';
-import { getRoom, getMember, isMemberBlocked, getRoomMusicLibrary } from '@/lib/firestore';
+import { getRoom, getMember, addMember, isMemberBlocked, getRoomMusicLibrary } from '@/lib/firestore';
 
 function getRoomStorageBaseDir(): string {
   if (process.env.VERCEL) {
@@ -36,13 +36,18 @@ export async function GET(
       return NextResponse.json({ error: 'Access blocked in this room' }, { status: 403 });
     }
 
-    const member = await getMember(roomId, effectiveUserId);
+    let member = await getMember(roomId, effectiveUserId);
     const isHost = room.hostId === effectiveUserId;
     if (!member && !isHost) {
-      return NextResponse.json(
-        { error: 'Private room audio. Must be a member to stream.' },
-        { status: 403 }
-      );
+      member = await addMember({
+        roomId,
+        userId: effectiveUserId,
+        username: authUser?.username || 'Room Listener',
+        userAvatar: authUser?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${effectiveUserId}`,
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+        status: 'connected',
+      });
     }
 
     const library = await getRoomMusicLibrary(roomId);
