@@ -72,6 +72,91 @@ export async function POST(
       });
     }
 
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const body = await req.json().catch(() => ({}));
+      const remoteUrl = body.remoteUrl as string | undefined;
+      if (remoteUrl) {
+        const filename = (body.filename as string) || 'audio.mp3';
+        const ext = path.extname(filename).toLowerCase() || '.mp3';
+        const baseNameWithoutExt = path.basename(filename, ext).replace(/[_-]/g, ' ').trim();
+        let trackTitle = body.title || baseNameWithoutExt || 'Untitled Track';
+        let trackArtist = body.artist || user.username || 'Community Artist';
+
+        if (!body.title && baseNameWithoutExt.includes(' - ')) {
+          const parts = baseNameWithoutExt.split(' - ');
+          trackArtist = parts[0].trim();
+          trackTitle = parts.slice(1).join(' - ').trim();
+        }
+
+        const trackId = `track-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const sourceUrl = `/api/rooms/${roomId}/music/stream/${trackId}`;
+
+        const musicRecord: RoomMusicRecord = {
+          trackId,
+          roomId,
+          title: trackTitle,
+          artist: trackArtist,
+          album: 'Room Uploads',
+          duration: body.duration || 210,
+          storagePath: `remote/${trackId}`,
+          uploadedBy: user.userId,
+          uploadedByUsername: user.username,
+          createdAt: new Date().toISOString(),
+          licenseType: 'User-Authorized Personal Audio',
+          playbackStatus: 'available',
+          fileSize: body.fileSize || 0,
+          mimeType: `audio/${ext.replace('.', '')}`,
+          sourceUrl,
+          remoteUrl,
+          artworkUrl:
+            'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+        };
+
+        await addTrackToRoomMusic(roomId, musicRecord);
+
+        if (body.autoQueue !== false) {
+          const queueItem: MusicTrack = {
+            trackId: musicRecord.trackId,
+            providerId: 'user_upload',
+            category: 'independent',
+            title: musicRecord.title,
+            artist: musicRecord.artist,
+            album: musicRecord.album,
+            artworkUrl: musicRecord.artworkUrl!,
+            duration: musicRecord.duration,
+            playbackAvailability: 'full_playback',
+            licenseType: musicRecord.licenseType,
+            territory: 'Worldwide',
+            attribution: `Uploaded by ${user.username}`,
+            sourceUrl: musicRecord.sourceUrl,
+            remoteUrl,
+            addedBy: user.userId,
+            addedByName: user.username,
+            addedAt: new Date().toISOString(),
+            uploadedBy: user.userId,
+            uploadedByUsername: user.username,
+          };
+          await addToPlaylist(roomId, queueItem);
+        }
+
+        return NextResponse.json({
+          success: true,
+          isComplete: true,
+          totalCount: 1,
+          successCount: 1,
+          failedCount: 0,
+          results: [
+            {
+              filename,
+              success: true,
+              track: musicRecord,
+            },
+          ],
+        });
+      }
+    }
+
     const formData = await req.formData();
 
     // Check if this is a chunked slice upload (for large files to bypass Vercel's 4.5MB limit)

@@ -30,9 +30,9 @@ export default function DashboardPage() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [isLookingUpCode, setIsLookingUpCode] = useState(false);
 
-  const currentUserId = user?.id || 'user_host_1';
-  const currentUserName = user?.fullName || user?.username || 'Alex Shredder';
-  const currentUserAvatar = user?.imageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=Alex';
+  const currentUserId = user?.id || '';
+  const currentUserName = user?.fullName || user?.username || 'Shredoo Listener';
+  const currentUserAvatar = user?.imageUrl || (user?.id ? `https://api.dicebear.com/7.x/bottts/svg?seed=${user.id}` : 'https://api.dicebear.com/7.x/bottts/svg?seed=Guest');
 
   const fetchRooms = async () => {
     try {

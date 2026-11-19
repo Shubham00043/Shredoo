@@ -47,15 +47,27 @@ export default function RoomPage({ params }: RoomPageProps) {
   const roomId = resolvedParams.roomId;
   const { user } = useUser();
 
-  // Active user identity for session & perspective testing
-  const [currentUserId, setCurrentUserId] = useState<string>('user_host_1');
-  const [currentUserName, setCurrentUserName] = useState<string>('Alex Shredder (Host)');
+  // Active user identity for session
+  const [currentUserId, setCurrentUserId] = useState<string>(user?.id || '');
+  const [currentUserName, setCurrentUserName] = useState<string>(user?.fullName || user?.username || 'Listener');
 
-  // Sync Clerk user when loaded if not overridden
+  // Sync Clerk user when loaded or fallback to stable guest ID
   useEffect(() => {
-    if (user?.id && currentUserId === 'user_host_1') {
+    if (user?.id) {
       setCurrentUserId(user.id);
-      setCurrentUserName(user.fullName || user.username || 'Shredoo Member');
+      setCurrentUserName(user.fullName || user.username || 'Listener');
+    } else {
+      try {
+        let guestId = localStorage.getItem('shredoo_guest_id');
+        if (!guestId) {
+          guestId = 'guest_' + Math.random().toString(36).substring(2, 9);
+          localStorage.setItem('shredoo_guest_id', guestId);
+        }
+        if (!currentUserId) {
+          setCurrentUserId(guestId);
+          setCurrentUserName('Guest ' + guestId.slice(-4).toUpperCase());
+        }
+      } catch (e) {}
     }
   }, [user]);
 
@@ -476,12 +488,6 @@ export default function RoomPage({ params }: RoomPageProps) {
           </p>
 
           <div className="flex gap-3">
-            <button
-              onClick={() => handleSwitchUser(room.hostId, `${room.hostName} (Host)`)}
-              className="px-4 py-2 rounded-xl bg-lounge-card hover:bg-lounge-border border border-lounge-border text-xs font-semibold text-lounge-text transition"
-            >
-              Switch to Host View
-            </button>
             <a
               href="/"
               className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white transition shadow-lg shadow-amber-950/40"
@@ -507,7 +513,6 @@ export default function RoomPage({ params }: RoomPageProps) {
           currentUserRole={currentUserRole}
           membersCount={members.length}
           onOpenManagement={() => setIsManagementOpen(true)}
-          onSwitchUser={handleSwitchUser}
         />
 
         {/* Mobile Navigation Tabs (Voice / Music / Mixer / All) */}

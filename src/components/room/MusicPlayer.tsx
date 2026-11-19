@@ -169,21 +169,15 @@ export function MusicPlayer({
     // Periodic poll without version change:
     // Audio is playing continuously - NEVER interrupt or seek during normal playback!
     if (isPlaying) {
-      if (audio.paused) {
+      if (audio.paused && audio.readyState >= 2) {
         audio.play().catch(() => {});
-      } else {
-        // Only adjust if extreme drift occurred (e.g. tab backgrounded for > 10s)
-        const targetTime = getCalculatedServerTime();
-        if (audio.readyState >= 1 && Math.abs(audio.currentTime - targetTime) > 10) {
-          audio.currentTime = targetTime;
-        }
       }
     } else {
       if (!audio.paused) {
         audio.pause();
       }
     }
-  }, [isPlaying, playbackVersion, currentTrackId, currentSourceUrl, getCalculatedServerTime]);
+  }, [isPlaying, playbackVersion, currentTrackId, currentSourceUrl]);
 
   // Fetch Room Library
   const fetchRoomLibrary = async () => {
@@ -447,13 +441,12 @@ export function MusicPlayer({
       {currentTrack?.sourceUrl && (
         <audio
           ref={audioRef}
-          src={
-            currentTrack.sourceUrl.startsWith('/api/')
-              ? `${currentTrack.sourceUrl}${currentTrack.sourceUrl.includes('?') ? '&' : '?'}userId=${encodeURIComponent(currentUserId)}`
-              : currentTrack.sourceUrl
-          }
+          src={currentTrack.sourceUrl}
           crossOrigin="anonymous"
           preload="auto"
+          onError={(e) => {
+            console.warn('Audio stream warning/error:', e.currentTarget.error?.message);
+          }}
           onTimeUpdate={(e) => setLocalTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => {
             const audioDur = e.currentTarget.duration;

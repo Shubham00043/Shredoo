@@ -21,10 +21,7 @@ export async function GET(
 
     const queryUserId = req.nextUrl.searchParams.get('userId');
     const authUser = await getAuthenticatedUser(req);
-    const effectiveUserId = authUser?.userId || queryUserId;
-    if (!effectiveUserId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const effectiveUserId = authUser?.userId || queryUserId || 'room_guest';
 
     const room = await getRoom(roomId);
     if (!room) {
@@ -38,7 +35,7 @@ export async function GET(
 
     let member = await getMember(roomId, effectiveUserId);
     const isHost = room.hostId === effectiveUserId;
-    if (!member && !isHost) {
+    if (!member && !isHost && effectiveUserId !== 'room_guest') {
       member = await addMember({
         roomId,
         userId: effectiveUserId,
@@ -86,6 +83,38 @@ export async function GET(
     }
 
     if (!targetFilePath || !fs.existsSync(targetFilePath)) {
+      if (track?.remoteUrl) {
+        try {
+          const range = req.headers.get('range');
+          const upstreamHeaders: Record<string, string> = {};
+          if (range) upstreamHeaders['Range'] = range;
+
+          const remoteRes = await fetch(track.remoteUrl, {
+            headers: upstreamHeaders,
+          });
+
+          const status = remoteRes.status === 206 ? 206 : 200;
+          const responseHeaders = new Headers();
+          responseHeaders.set('Access-Control-Allow-Origin', '*');
+          responseHeaders.set('Accept-Ranges', 'bytes');
+          responseHeaders.set('Content-Type', remoteRes.headers.get('content-type') || 'audio/mpeg');
+          if (remoteRes.headers.get('content-range')) {
+            responseHeaders.set('Content-Range', remoteRes.headers.get('content-range')!);
+          }
+          if (remoteRes.headers.get('content-length')) {
+            responseHeaders.set('Content-Length', remoteRes.headers.get('content-length')!);
+          }
+          responseHeaders.set('Cache-Control', 'public, max-age=3600');
+
+          return new NextResponse(remoteRes.body as any, {
+            status,
+            headers: responseHeaders,
+          });
+        } catch (fetchErr) {
+          console.error('Failed to proxy remote audio:', fetchErr);
+        }
+      }
+
       return NextResponse.json({ error: 'Audio file not found on server' }, { status: 404 });
     }
 

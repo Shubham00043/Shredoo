@@ -26,7 +26,7 @@ interface RoomHeaderProps {
   currentUserRole: RoomRole | null;
   membersCount: number;
   onOpenManagement: () => void;
-  onSwitchUser: (userId: string, username: string) => void;
+  onSwitchUser?: (userId: string, username: string) => void;
 }
 
 export function RoomHeader({
@@ -35,7 +35,6 @@ export function RoomHeader({
   currentUserRole,
   membersCount,
   onOpenManagement,
-  onSwitchUser,
 }: RoomHeaderProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -96,14 +95,6 @@ export function RoomHeader({
     }
   };
 
-  const simulationUsers = [
-    { id: room.hostId, name: `${room.hostName} (Host)`, role: 'owner' },
-    { id: 'user_member_2', name: 'Elena Riff', role: 'member' },
-    { id: 'user_member_3', name: 'Marcus Bass', role: 'member' },
-    { id: 'user_member_4', name: 'Chloe Drums', role: 'moderator' },
-    { id: 'user_bad_actor', name: 'Noise Troll (Blocked)', role: 'guest' },
-  ];
-
   return (
     <>
       <div className="relative rounded-3xl overflow-hidden border border-lounge-border bg-lounge-surface shadow-2xl mb-6">
@@ -118,25 +109,16 @@ export function RoomHeader({
 
           {/* Top Floating Controls */}
           <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
-            {/* Identity Simulation Switcher */}
-            <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-xs">
-              <span className="text-[10px] text-lounge-textMuted font-mono flex items-center gap-1">
-                <UserCheck size={12} className="text-amber-500" /> Perspective:
+            {/* Live Lounge Status Badge */}
+            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-bold text-white tracking-wide">
+                Live Lounge
               </span>
-              <select
-                value={currentUserId}
-                onChange={(e) => {
-                  const selected = simulationUsers.find((u) => u.id === e.target.value);
-                  if (selected) onSwitchUser(selected.id, selected.name);
-                }}
-                className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer text-xs"
-              >
-                {simulationUsers.map((u) => (
-                  <option key={u.id} value={u.id} className="bg-lounge-surface text-white">
-                    {u.name} [{u.role.toUpperCase()}]
-                  </option>
-                ))}
-              </select>
+              <span className="text-white/30">•</span>
+              <span className="text-[10px] text-lounge-textMuted font-mono">
+                {room.name}
+              </span>
             </div>
 
             <div className="flex items-center gap-2">

@@ -186,12 +186,99 @@ export function MusicUploadModal({
 
     const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB slices (well below Vercel's 4.5MB limit)
 
-    // Upload items sequentially with chunking
+    // Upload items sequentially with direct high-speed CDN streaming or chunking fallback
     for (let i = 0; i < fileList.length; i++) {
       const item = fileList[i];
       if (item.status === 'success') continue;
 
       const file = item.file;
+
+      // 1. Attempt direct high-speed browser upload to bypass Vercel 4.5MB Serverless limit
+      let directUrl: string | null = null;
+      try {
+        setFileList((prev) =>
+          prev.map((it) => (it.id === item.id ? { ...it, status: 'uploading', progress: 30 } : it))
+        );
+
+        const upFormData = new FormData();
+        upFormData.append('files[]', file, file.name);
+
+        const upRes = await fetch('https://uguu.se/upload.php', {
+          method: 'POST',
+          body: upFormData,
+          signal: abortControllerRef.current?.signal,
+        });
+
+        if (upRes.ok) {
+          const upData = await upRes.json();
+          if (upData.success && upData.files?.[0]?.url) {
+            directUrl = upData.files[0].url;
+          }
+        }
+      } catch (directErr) {
+        // Fall through to secondary CDN
+      }
+
+      if (!directUrl) {
+        try {
+          const tmpFormData = new FormData();
+          tmpFormData.append('file', file, file.name);
+          const tmpRes = await fetch('https://tmpfiles.org/api/v1/upload', {
+            method: 'POST',
+            body: tmpFormData,
+            signal: abortControllerRef.current?.signal,
+          });
+          if (tmpRes.ok) {
+            const tmpData = await tmpRes.json();
+            if (tmpData?.data?.url) {
+              directUrl = tmpData.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+            }
+          }
+        } catch (tmpErr) {}
+      }
+
+      // If direct CDN upload succeeded, register track in room immediately
+      if (directUrl) {
+        try {
+          setFileList((prev) =>
+            prev.map((it) => (it.id === item.id ? { ...it, status: 'uploading', progress: 85 } : it))
+          );
+
+          const registerRes = await fetch(`/api/rooms/${roomId}/music/upload`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-shredoo-user-id': currentUserId,
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              fileSize: file.size,
+              duration: item.duration || 210,
+              remoteUrl: directUrl,
+              autoQueue,
+            }),
+            signal: abortControllerRef.current?.signal,
+          });
+
+          const regData = await registerRes.json();
+          if (registerRes.ok && regData.results?.[0]?.track) {
+            const savedTrack = regData.results[0].track;
+            succeededTracks.push(savedTrack);
+            setFileList((prev) =>
+              prev.map((it) =>
+                it.id === item.id
+                  ? { ...it, status: 'success', progress: 100, resultTrack: savedTrack }
+                  : it
+              )
+            );
+            continue;
+          }
+        } catch (regErr) {
+          // If registration fails, fallback to chunked upload below
+        }
+      }
+
+      // 2. Fallback: 2MB chunked slice upload directly to server
       const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
       const uploadId = `upl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 

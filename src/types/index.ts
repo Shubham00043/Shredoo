@@ -55,6 +55,7 @@ export interface MusicTrack {
   attribution: string;
   sourceUrl?: string;
   previewUrl?: string;
+  remoteUrl?: string;
   addedBy?: string;
   addedByName?: string;
   addedAt?: string;
@@ -81,6 +82,7 @@ export interface RoomMusicRecord {
   fileSize?: number;
   mimeType?: string;
   sourceUrl: string;
+  remoteUrl?: string;
   artworkUrl?: string;
 }
 
